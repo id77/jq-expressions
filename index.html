@@ -472,7 +472,12 @@
           <div id="inErr" class="err"></div>
         </section>
         <section>
-          <h2>② 可视化编辑（点 ⚙ 可自定义运算符 / jq 表达式）</h2>
+          <h2>
+            ② 可视化编辑（点 ⚙ 可自定义运算符 / jq 表达式）
+            <span class="sp"></span>
+            <button id="expandTree" title="展开已加载的节点；更多项目仍需分批显示">展开全部</button>
+            <button id="collapseTree">收起全部</button>
+          </h2>
           <div id="tree" class="tree"></div>
         </section>
       </div>
@@ -580,6 +585,7 @@
       let ops = [];
       let uid = 1;
       const openSet = new Set();
+      let treeOpenDefault = null;
 
       /* ---------- helpers ---------- */
       function el(tag, attrs, ...kids) {
@@ -1573,7 +1579,6 @@
       let view = input,
         viewIsResult = false;
       let treeDiff = new Map();
-      let pendingTreeOpen = new Set();
       function curValue(path, orig) {
         if (viewIsResult) return orig;
         const o = topLevelFind(pathToJq(path), (x) => x.opr === '=');
@@ -1597,6 +1602,23 @@
       };
 
       const showN = new Map();
+      function configureTreeDetails(det, path, initiallyOpen = path.length < 2) {
+        const p = pathToJq(path);
+        det.open =
+          openSet.has(p) ||
+          (!openSet.has('-' + p) &&
+            (treeOpenDefault === null ? initiallyOpen : treeOpenDefault));
+        det.addEventListener('toggle', () => {
+          if (!det.isConnected) return;
+          if (det.open) {
+            openSet.add(p);
+            openSet.delete('-' + p);
+          } else {
+            openSet.delete(p);
+            openSet.add('-' + p);
+          }
+        });
+      }
       function subPath(sfx) {
         sfx = sfx.trim();
         return !sfx ? '' : /^[.\[]/.test(sfx) ? sfx : '.' + sfx;
@@ -1849,8 +1871,11 @@
           {
             title: '自定义运算符 / jq 表达式',
             onclick: () => {
-              panel.style.display =
-                panel.style.display === 'none' ? 'flex' : 'none';
+              const opening = panel.style.display === 'none';
+              panel.style.display = opening ? 'flex' : 'none';
+              if (opening && (k === 'obj' || k === 'arr')) {
+                panel.parentElement.open = true;
+              }
             },
           },
           '⚙',
@@ -1894,21 +1919,7 @@
               (deleted ? ' deleted' : '') +
               (diffClass ? ' ' + diffClass : ''),
           });
-          if (
-            pendingTreeOpen.has(p) ||
-            openSet.has(p) ||
-            (path.length < 2 && !openSet.has('-' + p))
-          )
-            det.open = true;
-          det.addEventListener('toggle', () => {
-            if (det.open) {
-              openSet.add(p);
-              openSet.delete('-' + p);
-            } else {
-              openSet.delete(p);
-              openSet.add('-' + p);
-            }
-          });
+          configureTreeDetails(det, path);
           det.append(
             el(
               'summary',
@@ -2072,6 +2083,7 @@
             ),
           ),
         );
+        configureTreeDetails(det, path, false);
         if (Array.isArray(value)) {
           value.forEach((item, index) =>
             det.append(buildDeletedNode(item, [...path, index], index)),
@@ -2084,10 +2096,7 @@
         return det;
       }
       function renderTree() {
-        const t = $('tree');
-        t.textContent = '';
-        t.append(buildNode(view, [], undefined));
-        pendingTreeOpen.clear();
+        $('tree').replaceChildren(buildNode(view, [], undefined));
       }
 
       /* ---------- ops list ---------- */
@@ -2414,16 +2423,17 @@
       }
       function renderOps() {
         const box = $('ops');
-        box.textContent = '';
-        if (!ops.length)
-          box.append(
-            el(
-              'div',
-              { class: 'hint' },
-              '暂无操作。在左侧树里修改字段，或导入已有式子。',
-            ),
-          );
-        ops.forEach((o, i) => box.append(opRow(o, ops, i)));
+        box.replaceChildren(
+          ...(ops.length
+            ? ops.map((o, i) => opRow(o, ops, i))
+            : [
+                el(
+                  'div',
+                  { class: 'hint' },
+                  '暂无操作。在左侧树里修改字段，或导入已有式子。',
+                ),
+              ]),
+        );
       }
 
       /* ---------- output & preview ---------- */
@@ -2610,12 +2620,6 @@
         treeDiff = new Map(
           changes.map((change) => [JSON.stringify(change.path), change.type]),
         );
-        pendingTreeOpen = new Set();
-        for (const change of changes) {
-          for (let length = 0; length < change.path.length; length++) {
-            pendingTreeOpen.add(pathToJq(change.path.slice(0, length)));
-          }
-        }
         $('preview').className = '';
         $('preview').replaceChildren(
           ...lines.map((l) =>
@@ -2823,7 +2827,6 @@
         } catch (e) {
           if (my !== pvToken) return;
           treeDiff = new Map();
-          pendingTreeOpen = new Set();
           pv.className = 'err';
           pv.textContent = String((e && e.message) || e);
           $('changes').textContent = '';
@@ -2868,6 +2871,16 @@
       }
 
       /* ---------- wiring ---------- */
+      $('expandTree').onclick = () => {
+        openSet.clear();
+        treeOpenDefault = true;
+        renderTree();
+      };
+      $('collapseTree').onclick = () => {
+        openSet.clear();
+        treeOpenDefault = false;
+        renderTree();
+      };
       function loadInput() {
         try {
           input = JSON.parse($('input').value);
