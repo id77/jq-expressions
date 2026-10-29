@@ -408,6 +408,18 @@
       .privacy-note strong {
         color: var(--fg);
       }
+      .install-guide {
+        margin: 8px 12px 0;
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .install-guide summary {
+        display: inline-block;
+        color: var(--acc);
+      }
+      .install-guide p {
+        margin: 6px 0 0;
+      }
     </style>
   </head>
   <body>
@@ -426,6 +438,10 @@
     <aside class="privacy-note" aria-label="隐私说明">
       <strong>隐私说明：</strong>输入的 JSON、jq 表达式和生成结果只在当前浏览器中处理；本项目页面代码不会把它们上传到服务器或发送给 CDN。这是一个没有自建后端、账号系统或数据存储的静态页面。结果预览使用由 jsDelivr CDN 加载的 jq-web，打开页面时浏览器会向 CDN 请求脚本。粘贴和复制功能只会在你点击相应按钮后调用浏览器剪贴板。
     </aside>
+    <details class="install-guide">
+      <summary>如何添加到主屏幕</summary>
+      <p>请先用 HTTPS 打开本页面。iPhone / iPad：在 Safari 中点“分享”按钮，选择“添加到主屏幕”，再点“添加”。Android：在 Chrome 中点右上角 ⋮，选择“添加到主屏幕”或“安装应用”，按提示确认。不同系统或浏览器的菜单名称可能略有差异；添加后仍需联网使用，本页面目前不支持离线运行。</p>
+    </details>
     <datalist id="paths"></datalist>
     <main>
       <div>

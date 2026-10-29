@@ -22,7 +22,7 @@
 
 ## 发布到 GitHub Pages
 
-本仓库通过 GitHub Actions 自动发布 Pages。将改动推送到 `main` 分支后，工作流会部署仓库根目录；也可以在 **Actions → Deploy to GitHub Pages → Run workflow** 手动触发。
+本仓库通过 GitHub Actions 自动发布 Pages。首次发布前，请在仓库的 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。之后将改动推送到 `main` 分支，工作流会自动部署仓库根目录；也可以在 **Actions → Deploy to GitHub Pages → Run workflow** 手动触发。
 
 首次部署完成后，可在仓库的 **Settings → Pages** 查看站点状态和网址。站点地址为 [https://id77.github.io/jq-expressions/](https://id77.github.io/jq-expressions/)。
 
@@ -31,6 +31,15 @@
 ## 本地预览
 
 直接用现代浏览器打开 `index.html` 即可。剪贴板 API 通常要求 HTTPS 或 localhost 等安全上下文；部署到 GitHub Pages 后使用 HTTPS 即可。
+
+## 添加到主屏幕
+
+先通过 HTTPS 打开 [在线页面](https://id77.github.io/jq-expressions/)：
+
+- **iPhone / iPad：**使用 Safari 打开，点击“分享”按钮，选择“添加到主屏幕”，然后确认“添加”。
+- **Android：**使用 Chrome 打开，点击右上角菜单（⋮），选择“添加到主屏幕”或“安装应用”，然后按提示确认。具体名称可能因系统和浏览器版本而异。
+
+添加后仍需联网使用；当前页面没有离线缓存，结果预览还需要从 jsDelivr 加载 jq-web。
 
 ## 技术说明
 
