@@ -1,0 +1,3087 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JQ 表达式</title>
+    <meta
+      name="description"
+      content="在浏览器中可视化编辑 JSON 并生成 jq 表达式。纯静态页面，输入数据在本地处理。"
+    />
+    <meta name="application-name" content="JQ 表达式" />
+    <meta name="apple-mobile-web-app-title" content="JQ 表达式" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#14161a" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%2314161a'/%3E%3Ctext x='256' y='330' font-family='Menlo,Consolas,monospace' font-size='230' font-weight='700' text-anchor='middle' fill='%234ea1ff'%3E.jq%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="apple-touch-icon" id="touchIcon" href="" />
+    <link rel="manifest" id="manifest" />
+    <style>
+      :root {
+        --bg: #14161a;
+        --panel: #1d2026;
+        --line: #2e333b;
+        --fg: #d8dce3;
+        --dim: #8a919e;
+        --acc: #4ea1ff;
+        --ok: #5ec27a;
+        --warn: #e5a443;
+        --bad: #ef6a6a;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          13px/1.5 -apple-system,
+          'PingFang SC',
+          Segoe UI,
+          sans-serif;
+      }
+      header {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-size: 15px;
+        margin: 0;
+      }
+      header label {
+        color: var(--dim);
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        gap: 12px;
+        padding: 12px;
+      }
+      @media (max-width: 1000px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 12px;
+      }
+      section > h2 {
+        font-size: 13px;
+        margin: 0 0 8px;
+        color: var(--dim);
+        font-weight: 600;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      section > h2 .sp {
+        flex: 1;
+      }
+      textarea,
+      input,
+      select {
+        background: #101216;
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 3px 6px;
+        font:
+          12px ui-monospace,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      textarea {
+        width: 100%;
+        resize: vertical;
+        min-height: 90px;
+      }
+      input:focus,
+      textarea:focus,
+      select:focus {
+        outline: 1px solid var(--acc);
+      }
+      button {
+        background: #2a2f38;
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 2px 8px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      button:hover {
+        background: #363c47;
+      }
+      button.pri {
+        background: var(--acc);
+        color: #04111f;
+        border-color: var(--acc);
+      }
+      button.x:hover {
+        background: var(--bad);
+        color: #fff;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+        background: #101216;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 8px;
+        font:
+          12px/1.55 ui-monospace,
+          Menlo,
+          Consolas,
+          monospace;
+        max-height: 340px;
+        overflow: auto;
+      }
+      .tree {
+        font:
+          12px/1.6 ui-monospace,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      .tree .children {
+        margin-left: 14px;
+        border-left: 1px dashed var(--line);
+        padding-left: 8px;
+      }
+      .node {
+        padding: 1px 0;
+        border-radius: 3px;
+      }
+      .tree .node.diff-add {
+        border-left: 2px solid #5ec27a;
+        padding-left: 4px;
+      }
+      .tree .node.diff-add > .row > .key,
+      .tree .node.diff-add > summary > .row > .key {
+        color: #9be9b0;
+      }
+      .tree .node.diff-mod,
+      .tree .node.diff-pin {
+        background: transparent;
+      }
+      .tree .node.diff-mod {
+        border-left: 2px solid #e5a443;
+        padding-left: 4px;
+      }
+      .tree .node.diff-pin {
+        border-left: 2px solid #4ea1ff;
+        padding-left: 4px;
+      }
+      .tree .node.diff-del {
+        border-left: 2px solid #ef6a6a;
+        padding-left: 4px;
+        background: rgba(239, 106, 106, 0.08);
+        color: #f19a9a;
+      }
+      .tree .node.diff-del .key,
+      .tree .node.diff-del .idx,
+      .tree .node.diff-del .val {
+        text-decoration: line-through;
+      }
+      .tree .node.diff-parent > summary::marker {
+        color: #d7a8ff;
+      }
+      .tree .node.diff-parent > summary:hover::marker {
+        color: #e8caff;
+      }
+      .diff-note {
+        font-size: 11px;
+        white-space: pre-wrap;
+      }
+      .diff-note.mod {
+        color: #f2cc7a;
+      }
+      .diff-note.pin {
+        color: #8fc8f5;
+      }
+      .tree .node.diff-add > summary > .row,
+      .tree .node.diff-mod > summary > .row,
+      .tree .node.diff-pin > summary > .row,
+      .tree .node.diff-del > summary > .row {
+        border-radius: 3px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .key {
+        color: #9cdcfe;
+      }
+      .idx {
+        color: var(--dim);
+      }
+      .badge {
+        font-size: 10px;
+        padding: 0 5px;
+        border-radius: 8px;
+        background: #2a2f38;
+        color: var(--dim);
+      }
+      .badge.date {
+        color: var(--warn);
+      }
+      .badge.del {
+        color: var(--bad);
+      }
+      .val {
+        color: #ce9178;
+      }
+      .val.n {
+        color: #b5cea8;
+      }
+      .val.b {
+        color: #569cd6;
+      }
+      .deleted > .row .key,
+      .deleted > summary .key {
+        text-decoration: line-through;
+        opacity: 0.6;
+      }
+      .panel {
+        margin: 3px 0 4px 8px;
+        padding: 6px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #181b20;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .panel input.w {
+        width: 220px;
+      }
+      .panel input.s {
+        width: 54px;
+      }
+      input[type='number'] {
+        -moz-appearance: textfield;
+        appearance: textfield;
+      }
+      input::-webkit-outer-spin-button,
+      input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        appearance: none;
+        margin: 0;
+        display: none;
+      }
+      input:not([type='checkbox']),
+      select,
+      textarea {
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      select {
+        padding-right: 18px;
+        background-image:
+          linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+          linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+        background-position:
+          calc(100% - 9px) 55%,
+          calc(100% - 5px) 55%;
+        background-size: 4px 4px;
+        background-repeat: no-repeat;
+      }
+      .panel button {
+        white-space: nowrap;
+      }
+      main > div {
+        min-width: 0;
+      }
+      .panel .tag {
+        color: var(--dim);
+      }
+      summary {
+        cursor: pointer;
+      }
+      .op {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .op input.p {
+        width: 30%;
+      }
+      .op input.v {
+        flex: 1;
+        min-width: 0;
+      }
+      .op select {
+        width: 58px;
+      }
+      .group {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px;
+        margin-bottom: 4px;
+        background: #181b20;
+      }
+      .group .inner {
+        margin-left: 14px;
+      }
+      .dl {
+        display: block;
+        padding: 0 4px;
+        border-radius: 2px;
+      }
+      .d-add {
+        background: #1f3a2a;
+        color: #9be9b0;
+      }
+      .d-mod {
+        background: #3a3220;
+        color: #f2cc7a;
+      }
+      .d-pin {
+        background: #1e3040;
+        color: #8fc8f5;
+      }
+      .d-del {
+        background: #3d2226;
+        color: #f19a9a;
+        text-decoration: line-through;
+      }
+      .dl .note {
+        color: var(--dim);
+        text-decoration: none;
+        font-size: 11px;
+        margin-left: 8px;
+      }
+      .legend span {
+        padding: 0 6px;
+        border-radius: 2px;
+        margin-right: 6px;
+      }
+      .chg {
+        margin-top: 6px;
+        font:
+          12px/1.6 ui-monospace,
+          Menlo,
+          Consolas,
+          monospace;
+        max-height: 180px;
+        overflow: auto;
+      }
+      .chg div {
+        cursor: default;
+      }
+      .err {
+        color: var(--bad);
+        white-space: pre-wrap;
+      }
+      .hint {
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .privacy-note {
+        margin: 10px 12px 0;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .privacy-note strong {
+        color: var(--fg);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>jq 式子可视化生成器</h1>
+      <label
+        ><input type="checkbox" id="dyn" /> 快捷加减输出为动态 jq 式（如
+        <code>. + 3600</code>），否则输出计算后的值</label
+      >
+      <label title="连续、同一父路径的操作合并为 .a |= (.x = 1 | .c = 2)"
+        ><input type="checkbox" id="merge" checked /> 合并同级路径</label
+      >
+      <label><input type="checkbox" id="quote" checked /> 外层包单引号</label>
+      <span id="jqstat" class="hint"></span>
+    </header>
+    <aside class="privacy-note" aria-label="隐私说明">
+      <strong>隐私说明：</strong>输入的 JSON、jq 表达式和生成结果只在当前浏览器中处理；本项目页面代码不会把它们上传到服务器或发送给 CDN。这是一个没有自建后端、账号系统或数据存储的静态页面。结果预览使用由 jsDelivr CDN 加载的 jq-web，打开页面时浏览器会向 CDN 请求脚本。粘贴和复制功能只会在你点击相应按钮后调用浏览器剪贴板。
+    </aside>
+    <datalist id="paths"></datalist>
+    <main>
+      <div>
+        <section>
+          <h2>
+            ① 输入 JSON <span class="sp"></span
+            ><button id="btnPasteIn" class="pri" title="读取剪贴板并覆盖输入框">
+              📋 粘贴覆盖</button
+            ><button id="btnFmt">格式化</button>
+          </h2>
+          <textarea id="input" spellcheck="false"></textarea>
+          <div id="inErr" class="err"></div>
+        </section>
+        <section>
+          <h2>② 可视化编辑（点 ⚙ 可自定义运算符 / jq 表达式）</h2>
+          <div id="tree" class="tree"></div>
+        </section>
+      </div>
+      <div>
+        <section>
+          <h2>
+            ③ 操作列表 <span class="sp"></span
+            ><button id="undo" title="Ctrl/⌘+Z">↶ 撤销</button
+            ><button id="clearOps" class="x">清空</button>
+          </h2>
+          <div class="row" style="margin-bottom: 8px">
+            <button id="addSet">+ 赋值</button
+            ><button id="addDef" title=".a //= 默认值：仅当 null/false 时赋值">
+              + 默认值 //=
+            </button>
+            <button id="addIf" title="if 条件 then … else … end">
+              + if 条件</button
+            ><button id="addMap" title=".arr |= map(…)">+ map 每项</button>
+            <button
+              id="addWE"
+              title="with_entries(...)：按 key/value 批量改对象"
+            >
+              + with_entries
+            </button>
+            <button id="addFill" title="数组为空则追加默认元素，否则逐项修改">
+              + 空则填充/否则逐项改</button
+            ><button id="addRaw">+ 原始 jq</button>
+          </div>
+          <div id="ops"></div>
+        </section>
+        <section>
+          <h2>
+            ④ 输出 <span class="sp"></span
+            ><button id="cpOne" class="pri">复制单行</button
+            ><button id="cpPretty" class="pri">复制缩进多行</button>
+          </h2>
+          <div class="hint">单行</div>
+          <pre id="outOne"></pre>
+          <div class="hint" style="margin-top: 6px">缩进多行</div>
+          <pre id="outPretty"></pre>
+        </section>
+        <section>
+          <h2>
+            ⑤ 导入已有式子再编辑 <span class="sp"></span
+            ><select id="examples">
+              <option value="">载入示例…</option></select
+            ><button
+              id="btnPasteImp"
+              class="pri"
+              title="读取剪贴板、覆盖并直接解析"
+            >
+              📋 粘贴覆盖并解析</button
+            ><button id="btnImport" class="pri">解析为操作</button>
+          </h2>
+          <textarea
+            id="imp"
+            spellcheck="false"
+            placeholder="粘贴已有 jq 式子（支持单行/多行、外层单引号）。能识别的 赋值/更新/del 会变成可编辑操作，其余保留为原始 jq。"
+          ></textarea>
+        </section>
+        <section>
+          <h2>
+            ⑥ 结果预览（jq-web 实际执行） <span class="sp"></span
+            ><button id="cpResult" class="pri" disabled>复制结果 JSON</button
+            ><button id="btnPasteTarget" class="pri">
+              📋 粘贴目标 JSON 并生成 jq</button
+            ><span class="legend"
+              ><span class="d-add">新增</span><span class="d-mod">修改</span
+              ><span class="d-pin">固定(值未变)</span
+              ><span class="d-del">删除</span></span
+            >
+          </h2>
+          <pre id="preview"></pre>
+          <div id="changes" class="chg"></div>
+          <div id="targetErr" class="err"></div>
+        </section>
+      </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/jq-web@0.6.2/jq.min.js"></script>
+    <script>
+      'use strict';
+      const $ = (id) => document.getElementById(id);
+      const SAMPLE = {
+        code: 0,
+        data: {
+          time: '2026-10-21 22:00:00',
+          num: 7,
+          day: '2',
+          ts: 1767225600,
+          tsMs: 1767225600000,
+          enabled: false,
+          tags: ['a', 'b'],
+          person: { name: 'Tom', address: { city: 'NY', zipcode: '10001' } },
+          items: [{ state: 0 }, { state: 2 }],
+        },
+        '2026-10-21': {
+          value: 1,
+          check: 0,
+          sessions: [{ value: 2, check: 0 }],
+        },
+      };
+
+      let input = SAMPLE;
+      let ops = [];
+      let uid = 1;
+      const openSet = new Set();
+
+      /* ---------- helpers ---------- */
+      function el(tag, attrs, ...kids) {
+        const e = document.createElement(tag);
+        for (const k in attrs || {}) {
+          if (k === 'class') e.className = attrs[k];
+          else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+          else if (k === 'value') e.value = attrs[k];
+          else e.setAttribute(k, attrs[k]);
+        }
+        for (const c of kids.flat(Infinity))
+          if (c != null && c !== false)
+            e.append(c.nodeType ? c : document.createTextNode(c));
+        return e;
+      }
+      const ID_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+      function pathToJq(path) {
+        if (!path.length) return '.';
+        let s = '';
+        path.forEach((k, i) => {
+          if (typeof k === 'number') s += (i === 0 ? '.' : '') + '[' + k + ']';
+          else if (ID_RE.test(k)) s += '.' + k;
+          else s += (i === 0 ? '.' : '') + '[' + JSON.stringify(k) + ']';
+        });
+        return s;
+      }
+      function tryJSON(t) {
+        try {
+          return { ok: true, v: JSON.parse(t) };
+        } catch (e) {
+          return { ok: false };
+        }
+      }
+      function parseUserVal(t) {
+        const r = tryJSON(t.trim());
+        return r.ok ? r.v : t;
+      }
+      const pad = (n, l = 2) => String(n).padStart(l, '0');
+      const cleanNum = (n) => parseFloat(Number(n).toPrecision(12));
+
+      /* ---------- value classification ---------- */
+      const DATE_RE =
+        /^(\d{4})([-\/])(\d{2})\2(\d{2})(?:([ T])(\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+      function parseDateStr(s) {
+        const m = DATE_RE.exec(s);
+        if (!m) return null;
+        const mo = +m[3],
+          d = +m[4];
+        if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+        return {
+          sep: m[2],
+          dsep: m[5] || '',
+          hasTime: !!m[5],
+          hasSec: m[8] != null,
+          p: {
+            y: +m[1],
+            mo,
+            d,
+            h: +(m[6] || 0),
+            mi: +(m[7] || 0),
+            s: +(m[8] || 0),
+          },
+        };
+      }
+      function fmtDate(f, p) {
+        let s = `${pad(p.y, 4)}${f.sep}${pad(p.mo)}${f.sep}${pad(p.d)}`;
+        if (f.hasTime)
+          s +=
+            `${f.dsep}${pad(p.h)}:${pad(p.mi)}` +
+            (f.hasSec ? `:${pad(p.s)}` : '');
+        return s;
+      }
+      function jqFmt(f) {
+        let s = `%Y${f.sep}%m${f.sep}%d`;
+        if (f.hasTime) s += `${f.dsep}%H:%M` + (f.hasSec ? ':%S' : '');
+        return s;
+      }
+      function tsInfo(n) {
+        if (!Number.isInteger(n)) return null;
+        if (n >= 1e9 && n < 1e10) return { mult: 1 };
+        if (n >= 1e12 && n < 1e13) return { mult: 1000 };
+        return null;
+      }
+      // kind: num | nums | ts | tss | dstr | bool | str | null | obj | arr
+      function classify(v) {
+        if (v === null) return { kind: 'null' };
+        if (Array.isArray(v)) return { kind: 'arr' };
+        switch (typeof v) {
+          case 'boolean':
+            return { kind: 'bool' };
+          case 'object':
+            return { kind: 'obj' };
+          case 'number': {
+            const t = tsInfo(v);
+            return t ? { kind: 'ts', ...t } : { kind: 'num' };
+          }
+          case 'string': {
+            const f = parseDateStr(v);
+            if (f) return { kind: 'dstr', f };
+            if (/^-?\d+(\.\d+)?$/.test(v)) {
+              const t = /^\d+$/.test(v) ? tsInfo(+v) : null;
+              return t ? { kind: 'tss', ...t } : { kind: 'nums' };
+            }
+            return { kind: 'str' };
+          }
+        }
+        return { kind: 'str' };
+      }
+
+      /* ---------- time maths ---------- */
+      // Date strings carry no timezone: handled as UTC fields. Timestamps use browser-local fields in the UI.
+      const UNITS = { 分: 60, 时: 3600, 天: 86400, 周: 604800 };
+      const utcParts = (ms) => {
+        const u = new Date(ms);
+        return {
+          y: u.getUTCFullYear(),
+          mo: u.getUTCMonth() + 1,
+          d: u.getUTCDate(),
+          h: u.getUTCHours(),
+          mi: u.getUTCMinutes(),
+          s: u.getUTCSeconds(),
+        };
+      };
+      const toUtcMs = (p) => Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+      function dateParts(c, v) {
+        if (c.kind === 'dstr') return { ...c.f.p };
+        const d = new Date((c.kind === 'ts' ? v : +v) * (1000 / c.mult));
+        return {
+          y: d.getFullYear(),
+          mo: d.getMonth() + 1,
+          d: d.getDate(),
+          h: d.getHours(),
+          mi: d.getMinutes(),
+          s: d.getSeconds(),
+        };
+      }
+      function fromParts(c, v, p) {
+        if (c.kind === 'dstr') return fmtDate(c.f, utcParts(toUtcMs(p)));
+        const old = c.kind === 'ts' ? v : +v;
+        const ms = c.mult === 1000 ? old % 1000 : 0;
+        const sec = Math.floor(
+          new Date(p.y, p.mo - 1, p.d, p.h, p.mi, p.s).getTime() / 1000,
+        );
+        const out = c.mult === 1000 ? sec * 1000 + ms : sec;
+        return c.kind === 'ts' ? out : String(out);
+      }
+      function staticShift(c, v, sec) {
+        if (c.kind === 'dstr')
+          return fmtDate(c.f, utcParts(toUtcMs(c.f.p) + sec * 1000));
+        const out = (c.kind === 'ts' ? v : +v) + sec * c.mult;
+        return c.kind === 'ts' ? out : String(out);
+      }
+      function shiftMonths(c, v, n) {
+        const p = dateParts(c, v);
+        const total = p.y * 12 + (p.mo - 1) + n;
+        p.y = Math.floor(total / 12);
+        p.mo = (total % 12) + 1;
+        p.d = Math.min(p.d, new Date(Date.UTC(p.y, p.mo, 0)).getUTCDate());
+        return fromParts(c, v, p);
+      }
+
+      /* ---------- ops model ---------- */
+      // {id, opr:"="|"|="|"+="|"-="|"*="|"//="|"/="|"del"|"raw"|"group", path, val, children, meta}
+      const mk = (o) => ({ id: uid++, path: '', val: '', ...o });
+      const isAssign = (o) => o.opr !== 'raw' && o.opr !== 'group';
+      const topLevelFind = (path, pred) =>
+        ops.find((o) => o.path === path && isAssign(o) && (!pred || pred(o)));
+      function upsert(path, opr, val, meta) {
+        const target = locateOperation(path);
+        const exact = target.exact;
+        const scope = target.scope;
+        const outerScope = target.outerScope;
+        const rootExactIndex = ops.findIndex(
+          (item) =>
+            item.opr !== 'group' &&
+            item.opr !== 'if' &&
+            item.opr !== 'we' &&
+            item.opr !== 'raw' &&
+            effectivePath('.', item.path) === path,
+        );
+        const canMoveAdjacentExact =
+          rootExactIndex >= 0 &&
+          outerScope &&
+          Math.abs(rootExactIndex - outerScope.parentIndex) === 1;
+        if (canMoveAdjacentExact) {
+          const previousIndex = rootExactIndex;
+          ops.splice(previousIndex, 1);
+          if (exact && exact.list !== ops) {
+            const { list, index, prefix } = exact;
+            list[index] = {
+              ...mk({ path: relativePathAt(path, prefix), opr, val, meta }),
+              id: list[index].id,
+            };
+            for (let i = list.length - 1; i >= 0; i--) {
+              if (i === index) continue;
+              if (
+                effectivePath(prefix, list[i].path) === path &&
+                isAssign(list[i])
+              )
+                list.splice(i, 1);
+            }
+          } else {
+            const relativePath = relativePathAt(path, scope.prefix);
+            const item = mk({ path: relativePath, opr, val, meta });
+            if (previousIndex < outerScope.parentIndex)
+              scope.list.unshift(item);
+            else scope.list.push(item);
+          }
+        } else if (exact) {
+          const { list, index, prefix } = target.exact;
+          const relativePath = relativePathAt(path, prefix);
+          list[index] = {
+            ...mk({ path: relativePath, opr, val, meta }),
+            id: list[index].id,
+          };
+          for (let i = list.length - 1; i >= 0; i--) {
+            if (i === index) continue;
+            const itemPath = effectivePath(prefix, list[i].path);
+            if (itemPath === path && isAssign(list[i])) list.splice(i, 1);
+          }
+        } else {
+          const { list, prefix } = scope;
+          list.push(mk({ path: relativePathAt(path, prefix), opr, val, meta }));
+        }
+        renderAll();
+      }
+      function removeOps(path) {
+        const target = locateOperation(path);
+        if (target.exact) {
+          const { list } = target.exact;
+          for (let i = list.length - 1; i >= 0; i--) {
+            if (
+              effectivePath(target.exact.prefix, list[i].path) === path &&
+              isAssign(list[i])
+            ) {
+              list.splice(i, 1);
+            }
+          }
+        } else {
+          ops = ops.filter(
+            (o) => !(effectivePath('.', o.path) === path && isAssign(o)),
+          );
+        }
+        renderAll();
+      }
+      function pushOp(o) {
+        if (
+          o.path &&
+          o.opr !== 'if' &&
+          o.opr !== 'we' &&
+          o.opr !== 'select' &&
+          o.opr !== 'raw' &&
+          o.opr !== 'group'
+        ) {
+          const target = locateOperation(o.path);
+          const { list, prefix } = target.scope;
+          list.push(mk({ ...o, path: relativePathAt(o.path, prefix) }));
+        } else {
+          ops.push(mk(o));
+        }
+        renderAll();
+      }
+      function setLiteral(path, v) {
+        upsert(pathToJq(path), '=', JSON.stringify(v));
+      }
+      function dynVal(c, d) {
+        const sg = d < 0 ? '-' : '+',
+          a = Math.abs(d);
+        switch (c.kind) {
+          case 'num':
+          case 'ts':
+            return `. ${sg} ${a}`;
+          case 'nums':
+          case 'tss':
+            return `(tonumber ${sg} ${a} | tostring)`;
+          case 'dstr': {
+            const f = JSON.stringify(jqFmt(c.f));
+            return `(strptime(${f}) | mktime ${sg} ${a} | strftime(${f}))`;
+          }
+        }
+      }
+      // delta unit: plain number for numbers, seconds*mult for timestamps, seconds for date strings; accumulates across clicks
+      function applyDelta(path, c, delta) {
+        const p = pathToJq(path),
+          ex = [...ops].reverse().find((o) => o.path === p && isAssign(o));
+        if (ex && ex.meta && ex.meta.delta) {
+          const total = cleanNum(ex.meta.delta + delta);
+          if (total === 0) return removeOps(p);
+          ex.val = dynVal(c, total);
+          ex.meta.delta = total;
+          return renderAll();
+        }
+        pushOp({ path: p, opr: '|=', val: dynVal(c, delta), meta: { delta } });
+      }
+
+      /* ---------- parse jq text ---------- */
+      function stripQuotes(t) {
+        t = t.trim();
+        if (t.length > 1 && t[0] === "'" && t.endsWith("'"))
+          t = t.slice(1, -1).replace(/'\\''/g, "'");
+        return t;
+      }
+      function isWord(s, i, w) {
+        return (
+          s.startsWith(w, i) &&
+          !/[\w.$]/.test(s[i - 1] || ' ') &&
+          !/\w/.test(s[i + w.length] || ' ')
+        );
+      }
+      function splitTop(s, sepFn) {
+        const out = [];
+        let depth = 0,
+          str = false,
+          last = 0,
+          ifd = 0;
+        for (let i = 0; i < s.length; i++) {
+          const c = s[i];
+          if (str) {
+            if (c === '\\') i++;
+            else if (c === '"') str = false;
+            continue;
+          }
+          if (c === '"') str = true;
+          else if ('([{'.includes(c)) depth++;
+          else if (')]}'.includes(c)) depth--;
+          else if (isWord(s, i, 'if')) ifd++;
+          else if (isWord(s, i, 'end')) ifd--;
+          else if (depth === 0 && ifd === 0 && sepFn(s, i)) {
+            out.push(s.slice(last, i));
+            last = i + 1;
+          }
+        }
+        out.push(s.slice(last));
+        return out.map((x) => x.trim()).filter(Boolean);
+      }
+      const splitPipes = (s) =>
+        splitTop(s, (t, i) => t[i] === '|' && t[i + 1] !== '=');
+      function outerParenInner(v) {
+        v = v.trim();
+        if (v[0] !== '(' || v[v.length - 1] !== ')') return null;
+        let depth = 0,
+          str = false;
+        for (let i = 0; i < v.length; i++) {
+          const c = v[i];
+          if (str) {
+            if (c === '\\') i++;
+            else if (c === '"') str = false;
+            continue;
+          }
+          if (c === '"') str = true;
+          else if (c === '(') depth++;
+          else if (c === ')') {
+            depth--;
+            if (depth === 0 && i < v.length - 1) return null;
+          }
+        }
+        return v.slice(1, -1);
+      }
+      const PATH_SRC = String.raw`(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|"(?:[^"\\]|\\.)*")|\.?\[(?:-?\d+|"(?:[^"\\]|\\.)*")?\]|\?)+`;
+      const ASSIGN_RE = new RegExp(
+        String.raw`^(${PATH_SRC}|\.)\s*(\|=|\+=|-=|\*=|//=|/=|=)\s*([\s\S]+)$`,
+      );
+      const DEL_RE = new RegExp(String.raw`^del\(\s*(${PATH_SRC})\s*\)$`);
+      const callInner = (v, fn) =>
+        v.startsWith(fn + '(') ? outerParenInner(v.slice(fn.length)) : null;
+      function parseBody(t) {
+        t = t.trim();
+        const un = outerParenInner(t);
+        if (un != null) return parseBody(un);
+        return !t || t === '.' ? [] : splitPipes(t).map(parseSeg);
+      }
+      function parseCond(t) {
+        t = t.trim();
+        const un = outerParenInner(t);
+        if (un != null) t = un.trim();
+        const wr = '(' + t + ')';
+        let m;
+        const P = `(${PATH_SRC}|\\.)`;
+        if (
+          (m = new RegExp(
+            `^\\(?\\s*${P}\\s*\\|\\s*length\\s*==\\s*0\\s*\\)?$`,
+          ).exec(t))
+        )
+          return { mode: 'empty', path: m[1], val: '' };
+        if (
+          (m = new RegExp(
+            `^\\(?\\s*${P}\\s*\\|\\s*length\\s*>\\s*0\\s*\\)?$`,
+          ).exec(t))
+        )
+          return { mode: 'nonempty', path: m[1], val: '' };
+        if (
+          (m = new RegExp(
+            `^\\(\\s*${P}\\s*\\|\\s*(test|startswith|endswith)\\(("(?:[^"\\\\]|\\\\.)*")\\)\\s*\\)$`,
+          ).exec(wr))
+        ) {
+          let sv;
+          try {
+            sv = JSON.parse(m[3]);
+          } catch (e) {
+            return { mode: 'raw', path: '.', val: t };
+          }
+          return { mode: m[2], path: m[1], val: sv };
+        }
+        if (
+          (m = new RegExp(
+            `^\\(\\s*${P}\\s*\\|\\s*contains\\(([\\s\\S]+)\\)\\s*\\)$`,
+          ).exec(wr))
+        )
+          return { mode: 'contains', path: m[1], val: m[2] };
+        if (
+          (m = new RegExp(`^${P}\\s*(==|!=|>=|<=|>|<)\\s*([\\s\\S]+)$`).exec(t))
+        )
+          return { mode: m[2], path: m[1], val: m[3] };
+        return { mode: 'raw', path: '.', val: t };
+      }
+      function parseIf(seg) {
+        if (!isWord(seg, 0, 'if') || !isWord(seg, seg.length - 3, 'end'))
+          return null;
+        let nest = 0,
+          str = false,
+          depth = 0,
+          thenAt = -1,
+          elseAt = -1;
+        for (let i = 0; i < seg.length; i++) {
+          const c = seg[i];
+          if (str) {
+            if (c === '\\') i++;
+            else if (c === '"') str = false;
+            continue;
+          }
+          if (c === '"') {
+            str = true;
+            continue;
+          }
+          if ('([{'.includes(c)) depth++;
+          else if (')]}'.includes(c)) depth--;
+          else if (isWord(seg, i, 'if')) nest++;
+          else if (isWord(seg, i, 'end')) {
+            nest--;
+            if (nest === 0 && i !== seg.length - 3) return null;
+          } else if (nest === 1 && depth === 0) {
+            if (isWord(seg, i, 'elif')) return null;
+            if (isWord(seg, i, 'then') && thenAt < 0) thenAt = i;
+            else if (isWord(seg, i, 'else') && elseAt < 0) elseAt = i;
+          }
+        }
+        if (thenAt < 0 || elseAt < thenAt) return null;
+        return mk({
+          opr: 'if',
+          cond: parseCond(seg.slice(2, thenAt)),
+          children: parseBody(seg.slice(thenAt + 4, elseAt)),
+          elseKids: parseBody(seg.slice(elseAt + 4, -3)),
+        });
+      }
+      function parseSeg(seg) {
+        const ifo = parseIf(seg);
+        if (ifo) return ifo;
+        const weIn = callInner(seg, 'with_entries');
+        if (weIn != null)
+          return mk({ opr: 'we', path: '.', children: parseBody(weIn) });
+        const selIn = callInner(seg, 'select');
+        if (selIn != null) return mk({ opr: 'select', cond: parseCond(selIn) });
+        let m = DEL_RE.exec(seg);
+        if (m) return mk({ opr: 'del', path: m[1] });
+        m = ASSIGN_RE.exec(seg);
+        if (m) {
+          const [, path, opr, val] = m;
+          if (opr === '|=') {
+            const weIn2 = callInner(val.trim(), 'with_entries');
+            if (weIn2 != null)
+              return mk({ opr: 'we', path, children: parseBody(weIn2) });
+            const v = val.trim(),
+              mapInner = callInner(v, 'map'),
+              inner = mapInner != null ? mapInner : outerParenInner(v);
+            if (inner != null) {
+              const segs = splitPipes(inner);
+              const kids = segs.map(parseSeg);
+              if (segs.length && kids.every((k) => k.opr !== 'raw'))
+                return mk({
+                  opr: 'group',
+                  path,
+                  wrapper: mapInner != null ? 'map' : '',
+                  children: kids,
+                });
+            }
+          }
+          return mk({ opr, path, val: val.trim() });
+        }
+        return mk({ opr: 'raw', val: seg });
+      }
+      function parseExpr(text) {
+        const t = stripQuotes(text);
+        if (!t || t === '.') return [];
+        return splitPipes(t).map(parseSeg);
+      }
+
+      /* ---------- compile ---------- */
+      const indentLines = (s, ind) =>
+        s
+          .split('\n')
+          .map((l, i) => (i ? ind + l : l))
+          .join('\n');
+      function fmtVal(v, pretty, ind) {
+        v = (v || '').trim();
+        const r = tryJSON(v);
+        if (!r.ok) return v;
+        if (
+          pretty &&
+          r.v &&
+          typeof r.v === 'object' &&
+          JSON.stringify(r.v).length > 50
+        )
+          return indentLines(JSON.stringify(r.v, null, 2), ind);
+        return JSON.stringify(r.v);
+      }
+      function normVal(v) {
+        v = (v || '').trim();
+        const r = tryJSON(v);
+        if (r.ok) return JSON.stringify(r.v);
+        return /^[.(\[{$]|^[a-z_]+\(/.test(v) ? v : JSON.stringify(v);
+      }
+      function condStr(c) {
+        const r = condStr0(c);
+        return c.neg ? `(${r} | not)` : r;
+      }
+      function condStr0(c) {
+        switch (c.mode) {
+          case 'empty':
+            return `(${c.path} | length == 0)`;
+          case 'nonempty':
+            return `(${c.path} | length > 0)`;
+          case 'test':
+          case 'startswith':
+          case 'endswith':
+            return `(${c.path} | ${c.mode}(${JSON.stringify(c.val || '')}))`;
+          case 'contains':
+            return `(${c.path} | contains(${normVal(c.val)}))`;
+          case 'raw':
+            return c.val || 'true';
+          default:
+            return `${c.path} ${c.mode} ${normVal(c.val)}`;
+        }
+      }
+      const SEG_RE = new RegExp(
+        String.raw`^(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|"(?:[^"\\]|\\.)*")|\.?\[(?:-?\d+|"(?:[^"\\]|\\.)*")?\]|\?)`,
+      );
+      function pathSegs(path) {
+        const out = [];
+        let r = (path || '').trim();
+        if (!r.startsWith('.') || r === '.') return null;
+        while (r) {
+          const m = SEG_RE.exec(r);
+          if (!m) return null;
+          out.push(m[0].replace(/^\.(?=\[)/, ''));
+          r = r.slice(m[0].length);
+        }
+        return out;
+      }
+      function effectivePath(prefix, path) {
+        return joinPath(prefix, path);
+      }
+      function relativePathAt(path, prefix) {
+        if (prefix === '.') return path;
+        if (path === prefix) return '.';
+        const suffix = path.slice(prefix.length);
+        return suffix.startsWith('[') ? '.' + suffix : suffix;
+      }
+      function isWithinPath(path, prefix) {
+        if (path === prefix) return true;
+        if (prefix === '.') return path.startsWith('.');
+        return path.startsWith(prefix + '.') || path.startsWith(prefix + '[');
+      }
+      function locateOperation(path) {
+        const root = { list: ops, prefix: '.', depth: 0 };
+        let bestScope = root;
+        let outerScope = null;
+        let bestExact = null;
+        function visit(list, prefix, depth, parentList, parentIndex) {
+          for (let i = 0; i < list.length; i++) {
+            const item = list[i];
+            if (
+              item.opr !== 'group' &&
+              item.opr !== 'if' &&
+              item.opr !== 'we' &&
+              item.opr !== 'raw' &&
+              effectivePath(prefix, item.path) === path
+            ) {
+              if (!bestExact || depth >= bestExact.depth) {
+                bestExact = { list, index: i, prefix, depth };
+              }
+            }
+            if (item.opr !== 'group' || item.wrapper === 'map') continue;
+            const groupPath = effectivePath(prefix, item.path);
+            if (!isWithinPath(path, groupPath) || !item.children) continue;
+            if (list === ops && (!outerScope || depth + 1 > outerScope.depth)) {
+              outerScope = {
+                list: item.children,
+                prefix: groupPath,
+                depth: depth + 1,
+                parentList: list,
+                parentIndex: i,
+              };
+            }
+            if (depth + 1 >= bestScope.depth) {
+              bestScope = {
+                list: item.children,
+                prefix: groupPath,
+                depth: depth + 1,
+                parentList: list,
+                parentIndex: i,
+              };
+            }
+            visit(item.children, groupPath, depth + 1, list, i);
+          }
+        }
+        visit(ops, '.', 0, null, -1);
+        return { exact: bestExact, scope: bestScope, outerScope };
+      }
+      const segsToPath = (segs) =>
+        segs.map((x, i) => (i === 0 && x[0] === '[' ? '.' : '') + x).join('');
+      const relPath = (segs) => (segs[0][0] === '[' ? '.' : '') + segs.join('');
+      // 合并连续、共享路径前缀的赋值/del 操作；只合并相邻项，保持执行顺序
+      function mergeOps(list) {
+        if (!$('merge').checked) return list;
+        const info = list.map((o) =>
+          isAssign(o) || o.opr === 'del' ? pathSegs(o.path) : null,
+        );
+        const out = [];
+        for (let i = 0; i < list.length; ) {
+          if (!info[i]) {
+            out.push(list[i]);
+            i++;
+            continue;
+          }
+          let pre = info[i].slice(0, -1),
+            j = i + 1;
+          if (!pre.length) {
+            out.push(list[i]);
+            i++;
+            continue;
+          }
+          while (j < list.length && info[j]) {
+            let n = 0;
+            while (
+              n < pre.length &&
+              n < info[j].length - 1 &&
+              pre[n] === info[j][n]
+            )
+              n++;
+            if (!n) break;
+            pre = pre.slice(0, n);
+            j++;
+          }
+          if (j - i < 2) {
+            out.push(list[i]);
+            i++;
+            continue;
+          }
+          const kids = list.slice(i, j).map((o, k) => ({
+            ...o,
+            path: relPath(info[i + k].slice(pre.length)),
+          }));
+          out.push({
+            opr: 'group',
+            wrapper: '',
+            path: segsToPath(pre),
+            children: mergeOps(kids),
+          });
+          i = j;
+        }
+        return out;
+      }
+      function compileItem(o, pretty, ind) {
+        switch (o.opr) {
+          case 'select':
+            return `select(${condStr(o.cond)})`;
+          case 'we': {
+            const kids = mergeOps(o.children).map((k) =>
+              compileItem(k, pretty, ind + '  '),
+            );
+            const head =
+              o.path && o.path.trim() !== '.'
+                ? `${o.path} |= with_entries(`
+                : 'with_entries(';
+            if (!kids.length) kids.push('.');
+            if (!pretty) return `${head}${kids.join(' | ')})`;
+            return `${head}\n${ind}  ${kids.join(`\n${ind}  | `)}\n${ind})`;
+          }
+          case 'if': {
+            const body = (kids, i2) =>
+              kids.length
+                ? mergeOps(kids)
+                    .map((k) => compileItem(k, pretty, i2))
+                    .join(pretty ? `\n${i2}| ` : ' | ')
+                : '.';
+            if (!pretty)
+              return `if ${condStr(o.cond)} then ${body(o.children, ind)} else ${body(o.elseKids, ind)} end`;
+            const i2 = ind + '  ';
+            return `if ${condStr(o.cond)} then\n${i2}${body(o.children, i2)}\n${ind}else\n${i2}${body(o.elseKids, i2)}\n${ind}end`;
+          }
+          case 'raw':
+            return (o.val || '').trim();
+          case 'del':
+            return `del(${o.path})`;
+          case 'group': {
+            const kids = mergeOps(o.children).map((k) =>
+              compileItem(k, pretty, ind + '  '),
+            );
+            const open = o.wrapper === 'map' ? 'map(' : '(';
+            if (!pretty) return `${o.path} |= ${open}${kids.join(' | ')})`;
+            return `${o.path} |= ${open}\n${ind}  ${kids.join(`\n${ind}  | `)}\n${ind})`;
+          }
+          default:
+            return `${o.path} ${o.opr} ${fmtVal(o.val, pretty, ind)}`;
+        }
+      }
+      function compile(pretty) {
+        if (!ops.length) return '.';
+        const items = mergeOps(ops).map((o) => compileItem(o, pretty, ''));
+        return pretty ? items.join('\n| ') : items.join(' | ');
+      }
+      const wrap = (s) =>
+        $('quote').checked ? "'" + s.replace(/'/g, "'\\''") + "'" : s;
+
+      /* ---------- tree ---------- */
+      const numInput = (val, w, onChange) =>
+        el('input', {
+          class: 's',
+          type: 'text',
+          inputmode: 'numeric',
+          value: val,
+          style: `width:${w}px`,
+          onchange: (e) => {
+            const n = parseInt(e.target.value, 10);
+            if (!isNaN(n)) onChange(n);
+            else e.target.value = val;
+          },
+        });
+
+      function advancedPanel(path, v, isArr, isObj) {
+        const p = pathToJq(path);
+        const opr = el(
+          'select',
+          {},
+          ['=', '|=', '+=', '-=', '*=', '//='].map((x) => el('option', {}, x)),
+        );
+        const txt = el('input', {
+          class: 'w',
+          value: JSON.stringify(v),
+          spellcheck: 'false',
+          placeholder: 'JSON 值 或 jq 表达式（如 . + 3600）',
+        });
+        const apply = () => {
+          let val = txt.value.trim();
+          if (opr.value !== '|=') {
+            const r = tryJSON(val);
+            val = r.ok
+              ? JSON.stringify(r.v)
+              : /^[.(\[$]|^[a-z_]+\(/.test(val)
+                ? val
+                : JSON.stringify(val);
+          }
+          upsert(p, opr.value, val);
+        };
+        txt.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') apply();
+        });
+        const tpl = [
+          el(
+            'button',
+            {
+              title: '仅当当前值为 null/false 时赋默认值',
+              onclick: () => upsert(p, '//=', normVal(txt.value)),
+            },
+            '默认值 //=',
+          ),
+          el(
+            'button',
+            {
+              title: '生成 if 条件块：值为 null 时才赋值',
+              onclick: () =>
+                pushOp({
+                  opr: 'if',
+                  cond: { mode: '==', path: p, val: 'null' },
+                  children: [
+                    mk({ opr: '=', path: p, val: normVal(txt.value) }),
+                  ],
+                  elseKids: [],
+                }),
+            },
+            'if 条件赋值',
+          ),
+          isObj
+            ? el(
+                'button',
+                {
+                  title: '对该对象的每个 key/value 条目批量处理',
+                  onclick: () =>
+                    pushOp({
+                      opr: 'we',
+                      path: p,
+                      children: [
+                        mk({
+                          opr: 'select',
+                          cond: { mode: 'test', path: '.key', val: '^prefix' },
+                        }),
+                      ],
+                    }),
+                },
+                'with_entries',
+              )
+            : null,
+          isArr
+            ? el(
+                'button',
+                {
+                  onclick: () =>
+                    pushOp({
+                      opr: 'group',
+                      wrapper: 'map',
+                      path: p,
+                      children: [mk({ opr: '=', path: '.x', val: 'null' })],
+                    }),
+                },
+                'map 每项',
+              )
+            : null,
+        ];
+        return el(
+          'div',
+          { class: 'panel', style: 'display:none' },
+          el('span', { class: 'tag' }, p),
+          opr,
+          txt,
+          el('button', { class: 'pri', onclick: apply }, '应用'),
+          el('span', { class: 'tag' }, '｜模板'),
+          tpl,
+        );
+      }
+
+      function scalarControls(path, cur, c) {
+        const box = [];
+        const dyn = $('dyn').checked;
+        const k = c.kind;
+        if (k === 'bool') {
+          box.push(
+            el(
+              'select',
+              { onchange: (e) => setLiteral(path, e.target.value === 'true') },
+              ['true', 'false'].map((x) =>
+                el(
+                  'option',
+                  { value: x, ...(String(cur) === x ? { selected: '' } : {}) },
+                  x,
+                ),
+              ),
+            ),
+          );
+        } else if (k === 'str') {
+          box.push(
+            el('input', {
+              class: 'w',
+              value: cur,
+              spellcheck: 'false',
+              onchange: (e) => setLiteral(path, e.target.value),
+            }),
+            el(
+              'button',
+              { title: '转为 null', onclick: () => setLiteral(path, null) },
+              '→null',
+            ),
+          );
+        } else if (k === 'null') {
+          const v = el('input', {
+            class: 'w',
+            placeholder: '新值：JSON 或文本，如 1 / "a" / [] / {}',
+            spellcheck: 'false',
+          });
+          const go = () => {
+            if (v.value !== '') setLiteral(path, parseUserVal(v.value));
+          };
+          v.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') go();
+          });
+          box.push(v, el('button', { class: 'pri', onclick: go }, '设值'));
+        } else if (k === 'num' || k === 'nums') {
+          const step = el('input', {
+            class: 's',
+            type: 'number',
+            value: 1,
+            title: '步长',
+          });
+          const base = k === 'num' ? cur : +cur;
+          const out = (n) => {
+            if (k === 'num') return n;
+            const s = String(n);
+            return /^-?0\d/.test(cur) ? s.padStart(cur.length, '0') : s;
+          };
+          const bump = (sg) => () => {
+            const d = sg * (+step.value || 0);
+            dyn
+              ? applyDelta(path, c, d)
+              : setLiteral(path, out(cleanNum(base + d)));
+          };
+          const inp = el('input', {
+            class: 's',
+            value: cur,
+            style: 'width:90px',
+            onchange: (e) => {
+              const n = Number(e.target.value);
+              if (e.target.value.trim() === '' || isNaN(n)) return;
+              setLiteral(path, out(n));
+            },
+          });
+          box.push(
+            el('button', { onclick: bump(-1) }, '−'),
+            inp,
+            el('button', { onclick: bump(1) }, '+'),
+            '步长',
+            step,
+          );
+        } else if (k === 'ts' || k === 'tss' || k === 'dstr') {
+          const p = dateParts(c, cur);
+          const part = (key, label, w) => [
+            numInput(p[key], w, (n) =>
+              setLiteral(path, fromParts(c, cur, { ...p, [key]: n })),
+            ),
+            label,
+          ];
+          box.push(
+            part('y', '年', 64),
+            part('mo', '月', 46),
+            part('d', '日', 46),
+          );
+          if (k !== 'dstr' || c.f.hasTime)
+            box.push(part('h', '时', 46), part('mi', '分', 46));
+          if (k !== 'dstr' || c.f.hasSec) box.push(part('s', '秒', 46));
+          if (k !== 'dstr')
+            box.push(
+              el(
+                'span',
+                { class: 'tag' },
+                c.mult === 1000 ? '13位ms' : '10位s',
+              ),
+            );
+          const unitBase = k === 'dstr' ? 1 : c.mult;
+          const shifts = [];
+          const us =
+            k === 'dstr' && !c.f.hasTime
+              ? ['天', '周']
+              : ['分', '时', '天', '周'];
+          for (const u of us)
+            for (const sg of [-1, 1]) {
+              shifts.push(
+                el(
+                  'button',
+                  {
+                    onclick: () => {
+                      const sec = sg * UNITS[u];
+                      dyn
+                        ? applyDelta(path, c, sec * unitBase)
+                        : setLiteral(path, staticShift(c, cur, sec));
+                    },
+                  },
+                  `${sg > 0 ? '+' : '−'}1${u}`,
+                ),
+              );
+            }
+          for (const [u, n] of [
+            ['月', 1],
+            ['年', 12],
+          ])
+            for (const sg of [-1, 1]) {
+              shifts.push(
+                el(
+                  'button',
+                  {
+                    title: '月/年为日历运算，始终输出静态值',
+                    onclick: () =>
+                      setLiteral(path, shiftMonths(c, cur, sg * n)),
+                  },
+                  `${sg > 0 ? '+' : '−'}1${u}`,
+                ),
+              );
+            }
+          box.push(el('div', { style: 'flex-basis:100%' }, shifts));
+        }
+        return box;
+      }
+
+      let view = input,
+        viewIsResult = false;
+      let treeDiff = new Map();
+      let pendingTreeOpen = new Set();
+      function curValue(path, orig) {
+        if (viewIsResult) return orig;
+        const o = topLevelFind(pathToJq(path), (x) => x.opr === '=');
+        if (o) {
+          const r = tryJSON(o.val);
+          if (r.ok) return r.v;
+        }
+        return orig;
+      }
+      const KIND_NAME = {
+        ts: '时间戳',
+        tss: '时间戳(串)',
+        dstr: '日期',
+        nums: '数字串',
+        num: '数字',
+        bool: '布尔',
+        str: '字符串',
+        null: 'null',
+        obj: '对象',
+        arr: '数组',
+      };
+
+      const showN = new Map();
+      function subPath(sfx) {
+        sfx = sfx.trim();
+        return !sfx ? '' : /^[.\[]/.test(sfx) ? sfx : '.' + sfx;
+      }
+      function containerAdders(path, p, isObj) {
+        const add = el('div', { class: 'panel' });
+        if (isObj) {
+          const kIn = el('input', {
+            class: 's',
+            style: 'width:110px',
+            placeholder: '新 key',
+          });
+          const vIn = el('input', {
+            class: 'w',
+            placeholder: 'value：JSON，如 "abc" / 1 / {"a":1}',
+            spellcheck: 'false',
+          });
+          add.append(
+            '＋ 追加 key',
+            kIn,
+            vIn,
+            el(
+              'button',
+              {
+                class: 'pri',
+                onclick: () => {
+                  if (kIn.value)
+                    pushOp({
+                      path: pathToJq([...path, kIn.value]),
+                      opr: '=',
+                      val: JSON.stringify(parseUserVal(vIn.value)),
+                    });
+                },
+              },
+              '添加',
+            ),
+          );
+          const mIn = el('input', {
+            class: 'w',
+            placeholder: '合并对象 {"city":"LA"}',
+            spellcheck: 'false',
+          });
+          add.append(
+            el('span', { class: 'tag' }, '｜'),
+            mIn,
+            el(
+              'button',
+              {
+                onclick: () => {
+                  const r = tryJSON(mIn.value);
+                  if (
+                    r.ok &&
+                    r.v &&
+                    typeof r.v === 'object' &&
+                    !Array.isArray(r.v)
+                  )
+                    pushOp({ path: p, opr: '*=', val: JSON.stringify(r.v) });
+                },
+              },
+              '合并 *=',
+            ),
+          );
+        } else {
+          const vIn = el('input', {
+            class: 'w',
+            placeholder: '追加元素 JSON',
+            spellcheck: 'false',
+          });
+          add.append(
+            '＋ 追加元素',
+            vIn,
+            el(
+              'button',
+              {
+                class: 'pri',
+                onclick: () =>
+                  pushOp({
+                    path: p,
+                    opr: '+=',
+                    val: JSON.stringify([parseUserVal(vIn.value)]),
+                  }),
+              },
+              '追加 +=',
+            ),
+          );
+          const iIn = el('input', {
+            class: 's',
+            type: 'number',
+            placeholder: 'idx',
+          });
+          const v2 = el('input', {
+            class: 'w',
+            placeholder: '该下标新值 JSON',
+            spellcheck: 'false',
+          });
+          add.append(
+            el('span', { class: 'tag' }, '｜'),
+            iIn,
+            v2,
+            el(
+              'button',
+              {
+                onclick: () => {
+                  if (iIn.value !== '')
+                    pushOp({
+                      path: pathToJq([...path, +iIn.value]),
+                      opr: '=',
+                      val: JSON.stringify(parseUserVal(v2.value)),
+                    });
+                },
+              },
+              '设置下标',
+            ),
+          );
+          const base = p === '.' ? '.[]' : p + '[]';
+          const sk = el('input', {
+            class: 's',
+            style: 'width:90px',
+            placeholder: '.key',
+            list: 'paths',
+            title: '元素内的相对路径，如 .state 或 .a.b',
+          });
+          const so = el(
+            'select',
+            {},
+            ['=', '|=', '+=', '-=', '//='].map((x) => el('option', {}, x)),
+          );
+          const sv = el('input', {
+            class: 'w',
+            placeholder: '值 / jq 表达式，如 1、"a"、. + 1',
+            spellcheck: 'false',
+          });
+          add.append(
+            el(
+              'div',
+              {
+                style:
+                  'flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center',
+              },
+              el('span', { class: 'tag' }, '全部元素：'),
+              sk,
+              so,
+              sv,
+              el(
+                'button',
+                {
+                  class: 'pri',
+                  onclick: () => {
+                    if (sv.value !== '')
+                      pushOp({
+                        path: base + subPath(sk.value),
+                        opr: so.value,
+                        val: normVal(sv.value),
+                      });
+                  },
+                },
+                '应用到每项',
+              ),
+            ),
+          );
+          const dk = el('input', {
+            class: 's',
+            style: 'width:90px',
+            placeholder: '.key',
+            title: '留空表示元素本身',
+          });
+          const dc = el(
+            'select',
+            {},
+            ['==', '!=', '>', '<', '>=', '<='].map((x) => el('option', {}, x)),
+          );
+          const dv = el('input', {
+            class: 'w',
+            placeholder: '比较值（JSON）',
+            spellcheck: 'false',
+          });
+          add.append(
+            el(
+              'div',
+              {
+                style:
+                  'flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center',
+              },
+              el('span', { class: 'tag' }, '按条件删除：'),
+              dk,
+              dc,
+              dv,
+              el(
+                'button',
+                {
+                  class: 'x',
+                  onclick: () => {
+                    if (dv.value !== '')
+                      pushOp({
+                        opr: 'raw',
+                        val: `del(${base} | select(${subPath(dk.value) || '.'} ${dc.value} ${normVal(dv.value)}))`,
+                      });
+                  },
+                },
+                '删除匹配项',
+              ),
+            ),
+          );
+          add.append(
+            el(
+              'div',
+              { class: 'tag', style: 'flex-basis:100%' },
+              '更复杂的操作可在操作列表添加原始 jq，如 ',
+              el('code', {}, `${p} |= map(.x = 1)`),
+            ),
+          );
+        }
+        return add;
+      }
+
+      function buildNode(orig, path, label) {
+        const p = pathToJq(path);
+        const o = topLevelFind(p);
+        const deleted = !viewIsResult && o && o.opr === 'del';
+        const cur = curValue(path, orig);
+        const changeType = treeDiff.get(JSON.stringify(path));
+        const diffClass = treeDiffClass(path);
+        const diffNote =
+          changeType === 'mod'
+            ? el(
+                'span',
+                { class: 'diff-note mod' },
+                '原: ' + short(valueAtPath(input, path)),
+              )
+            : changeType === 'pin'
+              ? el('span', { class: 'diff-note pin' }, '已固定')
+              : null;
+        const c = classify(cur);
+        const k = c.kind;
+        const labelEl = el(
+          'span',
+          { class: typeof label === 'number' ? 'idx' : 'key' },
+          label === undefined ? '(root)' : String(label),
+        );
+        const badge = el(
+          'span',
+          {
+            class: 'badge' + (['ts', 'tss', 'dstr'].includes(k) ? ' date' : ''),
+          },
+          KIND_NAME[k],
+        );
+        const panel = advancedPanel(path, cur, k === 'arr', k === 'obj');
+        const gear = el(
+          'button',
+          {
+            title: '自定义运算符 / jq 表达式',
+            onclick: () => {
+              panel.style.display =
+                panel.style.display === 'none' ? 'flex' : 'none';
+            },
+          },
+          '⚙',
+        );
+        const del = deleted
+          ? el('button', { onclick: () => removeOps(p) }, '↩ 撤销删除')
+          : path.length
+            ? el(
+                'button',
+                {
+                  class: 'x',
+                  title: '删除此字段',
+                  onclick: () => upsert(p, 'del', ''),
+                },
+                '🗑',
+              )
+            : null;
+        const dup =
+          path.length && typeof path[path.length - 1] === 'number' && !deleted
+            ? el(
+                'button',
+                {
+                  title: '复制此元素到数组末尾',
+                  onclick: () =>
+                    pushOp({
+                      path: pathToJq(path.slice(0, -1)),
+                      opr: '+=',
+                      val: `[${p}]`,
+                    }),
+                },
+                '⧉',
+              )
+            : null;
+        const actions = [gear, dup, del];
+
+        if (k === 'obj' || k === 'arr') {
+          const isObj = k === 'obj';
+          const det = el('details', {
+            class:
+              'node' +
+              (deleted ? ' deleted' : '') +
+              (diffClass ? ' ' + diffClass : ''),
+          });
+          if (
+            pendingTreeOpen.has(p) ||
+            openSet.has(p) ||
+            (path.length < 2 && !openSet.has('-' + p))
+          )
+            det.open = true;
+          det.addEventListener('toggle', () => {
+            if (det.open) {
+              openSet.add(p);
+              openSet.delete('-' + p);
+            } else {
+              openSet.delete(p);
+              openSet.add('-' + p);
+            }
+          });
+          det.append(
+            el(
+              'summary',
+              {},
+              el(
+                'span',
+                { class: 'row', style: 'display:inline-flex' },
+                labelEl,
+                badge,
+                isObj ? `{${Object.keys(cur).length}}` : `[${cur.length}]`,
+                diffNote,
+                actions,
+              ),
+            ),
+            panel,
+          );
+          const ch = el('div', { class: 'children' });
+          const keys = isObj ? Object.keys(cur) : cur.map((_, i) => i);
+          const lim = showN.get(p) || 30;
+          keys
+            .slice(0, lim)
+            .forEach((kk) => ch.append(buildNode(cur[kk], [...path, kk], kk)));
+          if (isObj) {
+            const old = valueAtPath(input, path);
+            if (isPlain(old)) {
+              Object.keys(old)
+                .filter(
+                  (key) => !Object.prototype.hasOwnProperty.call(cur, key),
+                )
+                .forEach((key) =>
+                  ch.append(buildDeletedNode(old[key], [...path, key], key)),
+                );
+            }
+          } else {
+            const old = valueAtPath(input, path);
+            if (Array.isArray(old)) {
+              old.forEach((value, i) => {
+                if (treeDiff.get(JSON.stringify([...path, i])) === 'del') {
+                  ch.append(buildDeletedNode(value, [...path, i], `−${i}`));
+                }
+              });
+            }
+          }
+          if (keys.length > lim)
+            ch.append(
+              el(
+                'button',
+                {
+                  onclick: () => {
+                    showN.set(p, lim + 30);
+                    renderTree();
+                  },
+                },
+                `显示更多（还有 ${keys.length - lim} 项）`,
+              ),
+            );
+          ch.append(containerAdders(path, p, isObj));
+          det.append(ch);
+          return det;
+        }
+        const controls = deleted ? [] : scalarControls(path, cur, c);
+        return el(
+          'div',
+          {
+            class:
+              'node' +
+              (deleted ? ' deleted' : '') +
+              (diffClass ? ' ' + diffClass : ''),
+          },
+          el(
+            'div',
+            { class: 'row' },
+            labelEl,
+            ':',
+            el(
+              'span',
+              {
+                class:
+                  'val ' +
+                  (k === 'num' || k === 'ts'
+                    ? 'n'
+                    : k === 'bool' || k === 'null'
+                      ? 'b'
+                      : ''),
+              },
+              JSON.stringify(cur),
+            ),
+            badge,
+            diffNote,
+            actions,
+          ),
+          controls.length ? el('div', { class: 'panel' }, controls) : null,
+          panel,
+        );
+      }
+      function valueAtPath(value, path) {
+        for (const key of path) {
+          if (value === null || typeof value !== 'object') return undefined;
+          value = value[key];
+        }
+        return value;
+      }
+      function treeDiffClass(path) {
+        const exact = treeDiff.get(JSON.stringify(path));
+        if (exact === 'del' && viewIsResult) {
+          for (const key of treeDiff.keys()) {
+            const changedPath = JSON.parse(key);
+            if (
+              changedPath.length > path.length &&
+              path.every((part, i) => changedPath[i] === part)
+            )
+              return 'diff-parent';
+          }
+          return '';
+        }
+        if (exact) return 'diff-' + exact;
+        for (const key of treeDiff.keys()) {
+          const changedPath = JSON.parse(key);
+          if (
+            changedPath.length > path.length &&
+            path.every((part, i) => changedPath[i] === part)
+          )
+            return 'diff-parent';
+        }
+        return '';
+      }
+      function buildDeletedNode(value, path, label) {
+        const isContainer = value !== null && typeof value === 'object';
+        const name = el(
+          'span',
+          { class: typeof label === 'number' ? 'idx' : 'key' },
+          String(label),
+        );
+        if (!isContainer) {
+          return el(
+            'div',
+            { class: 'node diff-del' },
+            el(
+              'div',
+              { class: 'row' },
+              name,
+              ':',
+              el('span', { class: 'val' }, JSON.stringify(value)),
+            ),
+          );
+        }
+        const det = el(
+          'details',
+          { class: 'node diff-del' },
+          el(
+            'summary',
+            {},
+            el(
+              'span',
+              { class: 'row', style: 'display:inline-flex' },
+              name,
+              el('span', { class: 'badge del' }, '已删除'),
+              Array.isArray(value)
+                ? `[${value.length}]`
+                : `{${Object.keys(value).length}}`,
+            ),
+          ),
+        );
+        if (Array.isArray(value)) {
+          value.forEach((item, index) =>
+            det.append(buildDeletedNode(item, [...path, index], index)),
+          );
+        } else {
+          Object.keys(value).forEach((key) =>
+            det.append(buildDeletedNode(value[key], [...path, key], key)),
+          );
+        }
+        return det;
+      }
+      function renderTree() {
+        const t = $('tree');
+        t.textContent = '';
+        t.append(buildNode(view, [], undefined));
+        pendingTreeOpen.clear();
+      }
+
+      /* ---------- ops list ---------- */
+      const WE_TPL = [
+        [
+          '过滤：只保留 key 匹配',
+          {
+            opr: 'select',
+            cond: { mode: 'test', path: '.key', val: '^prefix' },
+          },
+        ],
+        [
+          '过滤：删除 key 匹配',
+          {
+            opr: 'select',
+            cond: { mode: 'test', path: '.key', val: '^prefix', neg: true },
+          },
+        ],
+        [
+          '过滤：只保留 value 非 null',
+          { opr: 'select', cond: { mode: '!=', path: '.value', val: 'null' } },
+        ],
+        ['key 加前缀', { opr: '|=', path: '.key', val: '"p_" + .' }],
+        ['key 加后缀', { opr: '|=', path: '.key', val: '. + "_s"' }],
+        ['key 转小写', { opr: '|=', path: '.key', val: 'ascii_downcase' }],
+        ['key 转大写', { opr: '|=', path: '.key', val: 'ascii_upcase' }],
+        ['key 去前缀', { opr: '|=', path: '.key', val: 'ltrimstr("p_")' }],
+        ['key 正则替换', { opr: '|=', path: '.key', val: 'sub("a";"b")' }],
+        ['key 固定为…', { opr: '=', path: '.key', val: '"newKey"' }],
+        ['value 固定为…', { opr: '=', path: '.value', val: '1' }],
+        ['value 加 1', { opr: '|=', path: '.value', val: '. + 1' }],
+        ['value 转字符串', { opr: '|=', path: '.value', val: 'tostring' }],
+        ['value 转数字', { opr: '|=', path: '.value', val: 'tonumber' }],
+        ['value 内某字段赋值', { opr: '=', path: '.value.x', val: '1' }],
+        ['value 内删除字段', { opr: 'del', path: '.value.x' }],
+        [
+          '按 key 条件 if',
+          {
+            opr: 'if',
+            cond: { mode: 'test', path: '.key', val: '^prefix' },
+            children: [{ opr: '=', path: '.value.x', val: '1' }],
+            elseKids: [],
+          },
+        ],
+      ];
+      function condControls(c) {
+        const modes = [
+          ['==', '等于 =='],
+          ['!=', '不等于 !='],
+          ['>', '大于 >'],
+          ['<', '小于 <'],
+          ['>=', '≥'],
+          ['<=', '≤'],
+          ['empty', '为空(length==0)'],
+          ['nonempty', '非空(length>0)'],
+          ['test', '匹配正则'],
+          ['startswith', '以…开头'],
+          ['endswith', '以…结尾'],
+          ['contains', '包含'],
+          ['raw', '自定义 jq 条件'],
+        ];
+        const msel = el(
+          'select',
+          {
+            style: 'width:130px',
+            onchange: (e) => {
+              c.mode = e.target.value;
+              renderAll();
+            },
+          },
+          modes.map(([v, t]) =>
+            el(
+              'option',
+              { value: v, ...(v === c.mode ? { selected: '' } : {}) },
+              t,
+            ),
+          ),
+        );
+        const cin = (prop, cls, ph) =>
+          el('input', {
+            class: cls,
+            value: c[prop],
+            placeholder: ph,
+            spellcheck: 'false',
+            ...(prop === 'path' ? { list: 'paths' } : {}),
+            oninput: (e) => {
+              c[prop] = e.target.value;
+              refreshOutput();
+            },
+          });
+        const ph =
+          c.mode === 'raw'
+            ? '完整 jq 条件，如 .key == "a" or .value > 1'
+            : c.mode === 'test'
+              ? '正则，如 ^\\d{4}-'
+              : ['startswith', 'endswith'].includes(c.mode)
+                ? '文本'
+                : '比较值（JSON，裸词按字符串）';
+        const neg = el(
+          'label',
+          { class: 'hint', title: '对条件取反（| not）' },
+          el('input', {
+            type: 'checkbox',
+            ...(c.neg ? { checked: '' } : {}),
+            onchange: (e) => {
+              c.neg = e.target.checked;
+              refreshOutput();
+            },
+          }),
+          '非',
+        );
+        return [
+          c.mode === 'raw'
+            ? null
+            : cin('path', 'p', '路径，如 .key / .value.x'),
+          msel,
+          c.mode === 'empty' || c.mode === 'nonempty'
+            ? null
+            : cin('val', 'v', ph),
+          neg,
+        ];
+      }
+      function childAdder(list, isWE) {
+        const weSel = !isWE
+          ? null
+          : el(
+              'select',
+              {
+                onchange: (e) => {
+                  const t = WE_TPL[+e.target.value];
+                  if (!t) return;
+                  const clone = JSON.parse(JSON.stringify(t[1]));
+                  const rebuild = (o) => {
+                    const r = mk(o);
+                    if (o.children) r.children = o.children.map(rebuild);
+                    if (o.elseKids) r.elseKids = o.elseKids.map(rebuild);
+                    return r;
+                  };
+                  list.push(rebuild(clone));
+                  renderAll();
+                },
+              },
+              el('option', { value: '' }, '＋ 快捷模板…'),
+              WE_TPL.map((t, i) => el('option', { value: i }, t[0])),
+            );
+        const add0 = (o, label) =>
+          el(
+            'button',
+            {
+              onclick: () => {
+                list.push(mk(o));
+                renderAll();
+              },
+            },
+            label,
+          );
+        const add = add0;
+        return el(
+          'div',
+          { class: 'row', style: 'margin:2px 0 4px' },
+          weSel,
+          add({ opr: '=', path: '.x', val: 'null' }, '+赋值'),
+          add({ opr: '//=', path: '.x', val: 'null' }, '+//='),
+          add({ opr: 'del', path: '.x' }, '+del'),
+          add(
+            {
+              opr: 'if',
+              cond: { mode: '==', path: '.x', val: 'null' },
+              children: [],
+              elseKids: [],
+            },
+            '+if',
+          ),
+          add(
+            { opr: 'select', cond: { mode: '==', path: '.x', val: 'null' } },
+            '+select',
+          ),
+          add({ opr: 'raw', val: '.' }, '+原始'),
+        );
+      }
+      function opRow(o, list, idx) {
+        const mv = (d) => {
+          const j = idx + d;
+          if (j < 0 || j >= list.length) return;
+          [list[idx], list[j]] = [list[j], list[idx]];
+          renderAll();
+        };
+        const ctl = [
+          el('button', { onclick: () => mv(-1) }, '↑'),
+          el('button', { onclick: () => mv(1) }, '↓'),
+          el(
+            'button',
+            {
+              class: 'x',
+              onclick: () => {
+                list.splice(idx, 1);
+                renderAll();
+              },
+            },
+            '×',
+          ),
+        ];
+        const bind = (prop, cls) =>
+          el('input', {
+            class: cls,
+            value: o[prop],
+            spellcheck: 'false',
+            ...(prop === 'path' ? { list: 'paths' } : {}),
+            oninput: (e) => {
+              o[prop] = e.target.value;
+              if (prop === 'val') o.meta = null;
+              refreshOutput();
+            },
+          });
+        const kidsBox = (list, title) =>
+          el(
+            'div',
+            { class: 'inner' },
+            title ? el('div', { class: 'hint' }, title) : null,
+            list.map((kid, i) => opRow(kid, list, i)),
+            childAdder(list, o.opr === 'we'),
+          );
+        if (o.opr === 'select') {
+          return el(
+            'div',
+            { class: 'op' },
+            el('b', {}, 'select'),
+            ...condControls(o.cond),
+            ctl,
+          );
+        }
+        if (o.opr === 'we') {
+          return el(
+            'div',
+            { class: 'group' },
+            el(
+              'div',
+              { class: 'op' },
+              el('b', {}, 'with_entries'),
+              '作用于',
+              bind('path', 'p'),
+              el(
+                'span',
+                { class: 'hint', style: 'flex:1' },
+                '（. = 根对象；每个条目为 {key, value}）',
+              ),
+              ctl,
+            ),
+            kidsBox(
+              o.children,
+              '对每个条目依次执行：改 key 写 .key，改 value 写 .value.xxx；select(...) 可过滤条目',
+            ),
+          );
+        }
+        if (o.opr === 'if') {
+          const c = o.cond;
+          return el(
+            'div',
+            { class: 'group' },
+            el(
+              'div',
+              { class: 'op' },
+              el('b', {}, 'if'),
+              ...condControls(c),
+              'then',
+              ctl,
+            ),
+            kidsBox(o.children, '满足条件时执行（空 = 不变 .）'),
+            el('div', { class: 'hint', style: 'margin-left:14px' }, 'else'),
+            kidsBox(o.elseKids, '不满足时执行（空 = 不变 .）'),
+          );
+        }
+        if (o.opr === 'raw')
+          return el('div', { class: 'op' }, bind('val', 'v'), ctl);
+        if (o.opr === 'del')
+          return el(
+            'div',
+            { class: 'op' },
+            'del(',
+            bind('path', 'v'),
+            ')',
+            ctl,
+          );
+        if (o.opr === 'group') {
+          return el(
+            'div',
+            { class: 'group' },
+            el(
+              'div',
+              { class: 'op' },
+              bind('path', 'p'),
+              o.wrapper === 'map' ? '|= map(' : '|= (',
+              el('span', { style: 'flex:1' }),
+              ctl,
+            ),
+            kidsBox(
+              o.children,
+              o.wrapper === 'map'
+                ? '对数组每个元素执行（路径写相对路径，如 .status）'
+                : '在该路径内部执行（路径写相对路径）',
+            ),
+          );
+        }
+        const sel = el(
+          'select',
+          {
+            onchange: (e) => {
+              o.opr = e.target.value;
+              refreshOutput();
+            },
+          },
+          ['=', '|=', '+=', '-=', '*=', '/=', '//='].map((x) =>
+            el('option', x === o.opr ? { selected: '' } : {}, x),
+          ),
+        );
+        return el(
+          'div',
+          { class: 'op' },
+          bind('path', 'p'),
+          sel,
+          bind('val', 'v'),
+          ctl,
+        );
+      }
+      function renderOps() {
+        const box = $('ops');
+        box.textContent = '';
+        if (!ops.length)
+          box.append(
+            el(
+              'div',
+              { class: 'hint' },
+              '暂无操作。在左侧树里修改字段，或导入已有式子。',
+            ),
+          );
+        ops.forEach((o, i) => box.append(opRow(o, ops, i)));
+      }
+
+      /* ---------- output & preview ---------- */
+      let pvToken = 0;
+      let previewResult = null;
+      let previewReady = false;
+      const isPlain = (v) => v && typeof v === 'object' && !Array.isArray(v);
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      const short = (v) => {
+        const t = JSON.stringify(v);
+        return t.length > 60 ? t.slice(0, 60) + '…' : t;
+      };
+      function alignArrayDiff(a, b) {
+        const rows = a.length + 1,
+          cols = b.length + 1;
+        if (a.length * b.length > 100000) {
+          return Array.from({ length: Math.max(a.length, b.length) }, (_, i) =>
+            i < a.length && i < b.length
+              ? { oldIndex: i, newIndex: i }
+              : i < a.length
+                ? { oldIndex: i }
+                : { newIndex: i },
+          );
+        }
+        const dp = new Uint32Array(rows * cols);
+        for (let i = a.length - 1; i >= 0; i--) {
+          for (let j = b.length - 1; j >= 0; j--) {
+            dp[i * cols + j] = jsonEqual(a[i], b[j])
+              ? 1 + dp[(i + 1) * cols + j + 1]
+              : Math.max(dp[(i + 1) * cols + j], dp[i * cols + j + 1]);
+          }
+        }
+        const matches = [];
+        let i = 0,
+          j = 0;
+        while (i < a.length && j < b.length) {
+          if (jsonEqual(a[i], b[j])) {
+            matches.push([i++, j++]);
+          } else if (dp[(i + 1) * cols + j] >= dp[i * cols + j + 1]) {
+            i++;
+          } else {
+            j++;
+          }
+        }
+        const pairs = [];
+        let oldIndex = 0,
+          newIndex = 0;
+        for (const [matchedOld, matchedNew] of [
+          ...matches,
+          [a.length, b.length],
+        ]) {
+          const oldGap = matchedOld - oldIndex,
+            newGap = matchedNew - newIndex,
+            changedCount = Math.min(oldGap, newGap);
+          for (let k = 0; k < changedCount; k++) {
+            pairs.push({
+              oldIndex: oldIndex + k,
+              newIndex: newIndex + k,
+            });
+          }
+          for (let k = changedCount; k < oldGap; k++) {
+            pairs.push({ oldIndex: oldIndex + k });
+          }
+          for (let k = changedCount; k < newGap; k++) {
+            pairs.push({ newIndex: newIndex + k });
+          }
+          if (matchedOld < a.length) {
+            pairs.push({ oldIndex: matchedOld, newIndex: matchedNew });
+          }
+          oldIndex = matchedOld + 1;
+          newIndex = matchedNew + 1;
+        }
+        return pairs;
+      }
+      function diffLines(a, b, key, ind, path, changes, touched) {
+        const pre =
+          ind +
+          (key === undefined
+            ? ''
+            : typeof key === 'number'
+              ? ''
+              : JSON.stringify(key) + ': ');
+        const whole = (v, cls, note) =>
+          JSON.stringify(v, null, 2)
+            .split('\n')
+            .map((l, i) => ({
+              t: (i ? ind : pre) + l,
+              c: cls,
+              note: i === 0 ? note : '',
+            }));
+        if (
+          a !== undefined &&
+          b !== undefined &&
+          touched &&
+          touched.has(JSON.stringify(path)) &&
+          same(a, b)
+        ) {
+          changes.push({ type: 'pin', path, nv: b });
+          return whole(b, 'd-pin', '← 已指定，值未变');
+        }
+        if (a === undefined) {
+          changes.push({ type: 'add', path, nv: b });
+          return whole(b, 'd-add');
+        }
+        if (b === undefined) {
+          changes.push({ type: 'del', path, ov: a });
+          return whole(a, 'd-del');
+        }
+        const bothObj = isPlain(a) && isPlain(b),
+          bothArr = Array.isArray(a) && Array.isArray(b);
+        if (bothArr) {
+          const pairs = alignArrayDiff(a, b);
+          if (!pairs.length) return [{ t: pre + '[]', c: '' }];
+          const kids = pairs.map(({ oldIndex, newIndex }) => {
+            const index = newIndex === undefined ? oldIndex : newIndex;
+            return diffLines(
+              oldIndex === undefined ? undefined : a[oldIndex],
+              newIndex === undefined ? undefined : b[newIndex],
+              index,
+              ind + '  ',
+              [...path, newIndex === undefined ? oldIndex : newIndex],
+              changes,
+              touched,
+            );
+          });
+          kids.forEach((ls, i) => {
+            if (i < kids.length - 1)
+              ls[ls.length - 1] = {
+                ...ls[ls.length - 1],
+                t: ls[ls.length - 1].t + ',',
+              };
+          });
+          return [
+            { t: pre + '[', c: '' },
+            ...kids.flat(),
+            { t: ind + ']', c: '' },
+          ];
+        }
+        if (bothObj || bothArr) {
+          const keys = bothObj
+            ? [...Object.keys(b), ...Object.keys(a).filter((k) => !(k in b))]
+            : Array.from({ length: Math.max(a.length, b.length) }, (_, i) => i);
+          if (!keys.length)
+            return [{ t: pre + (bothObj ? '{}' : '[]'), c: '' }];
+          const kids = keys.map((k) =>
+            diffLines(
+              a[k],
+              b[k],
+              k,
+              ind + '  ',
+              [...path, k],
+              changes,
+              touched,
+            ),
+          );
+          kids.forEach((ls, i) => {
+            if (i < kids.length - 1)
+              ls[ls.length - 1] = {
+                ...ls[ls.length - 1],
+                t: ls[ls.length - 1].t + ',',
+              };
+          });
+          return [
+            { t: pre + (bothObj ? '{' : '['), c: '' },
+            ...kids.flat(),
+            { t: ind + (bothObj ? '}' : ']'), c: '' },
+          ];
+        }
+        if (same(a, b)) return whole(b, '');
+        changes.push({ type: 'mod', path, ov: a, nv: b });
+        return whole(b, 'd-mod', '← 原: ' + short(a));
+      }
+      function renderPreview(oldV, newV, touched) {
+        const changes = [];
+        const lines = diffLines(
+          oldV,
+          newV,
+          undefined,
+          '',
+          [],
+          changes,
+          touched,
+        );
+        treeDiff = new Map(
+          changes.map((change) => [JSON.stringify(change.path), change.type]),
+        );
+        pendingTreeOpen = new Set();
+        for (const change of changes) {
+          for (let length = 0; length < change.path.length; length++) {
+            pendingTreeOpen.add(pathToJq(change.path.slice(0, length)));
+          }
+        }
+        $('preview').className = '';
+        $('preview').replaceChildren(
+          ...lines.map((l) =>
+            el(
+              'span',
+              { class: 'dl ' + l.c },
+              l.t,
+              l.note ? el('span', { class: 'note' }, l.note) : null,
+            ),
+          ),
+        );
+        const box = $('changes');
+        const tag = { add: '＋', mod: '～', del: '－', pin: '＝' },
+          col = { add: 'd-add', mod: 'd-mod', del: 'd-del', pin: 'd-pin' };
+        box.replaceChildren(
+          el(
+            'div',
+            { class: 'hint' },
+            changes.length ? `共 ${changes.length} 处变更` : '无变更',
+          ),
+          ...changes
+            .slice(0, 200)
+            .map((c) =>
+              el(
+                'div',
+                {},
+                el('span', { class: col[c.type] }, tag[c.type]),
+                ' ' + (pathToJq(c.path) || '.'),
+                ' ',
+                c.type === 'add'
+                  ? '= ' + short(c.nv)
+                  : c.type === 'pin'
+                    ? '= ' + short(c.nv) + '（已指定，值未变）'
+                    : c.type === 'del'
+                      ? '（原 ' + short(c.ov) + '）'
+                      : short(c.ov) + ' → ' + short(c.nv),
+              ),
+            ),
+        );
+      }
+      function jsonEqual(a, b) {
+        if (a === b) return true;
+        if (Array.isArray(a) || Array.isArray(b)) {
+          return (
+            Array.isArray(a) &&
+            Array.isArray(b) &&
+            a.length === b.length &&
+            a.every((value, i) => jsonEqual(value, b[i]))
+          );
+        }
+        if (isPlain(a) || isPlain(b)) {
+          if (!isPlain(a) || !isPlain(b)) return false;
+          const ak = Object.keys(a),
+            bk = Object.keys(b);
+          return (
+            ak.length === bk.length &&
+            ak.every(
+              (key) =>
+                Object.prototype.hasOwnProperty.call(b, key) &&
+                jsonEqual(a[key], b[key]),
+            )
+          );
+        }
+        return false;
+      }
+      function diffToOps(before, after, path = [], out = []) {
+        if (jsonEqual(before, after)) return out;
+        if (isPlain(before) && isPlain(after)) {
+          for (const key of Object.keys(before)) {
+            if (!Object.prototype.hasOwnProperty.call(after, key)) {
+              out.push(mk({ opr: 'del', path: pathToJq([...path, key]) }));
+            } else {
+              diffToOps(before[key], after[key], [...path, key], out);
+            }
+          }
+          for (const key of Object.keys(after)) {
+            if (!Object.prototype.hasOwnProperty.call(before, key)) {
+              out.push(
+                mk({
+                  opr: '=',
+                  path: pathToJq([...path, key]),
+                  val: JSON.stringify(after[key]),
+                }),
+              );
+            }
+          }
+          return out;
+        }
+        if (Array.isArray(before) && Array.isArray(after)) {
+          const sharedLength = Math.min(before.length, after.length);
+          for (let i = 0; i < sharedLength; i++) {
+            diffToOps(before[i], after[i], [...path, i], out);
+          }
+          if (after.length > before.length) {
+            out.push(
+              mk({
+                opr: '+=',
+                path: pathToJq(path),
+                val: JSON.stringify(after.slice(before.length)),
+              }),
+            );
+          } else if (before.length > after.length) {
+            const arrayPath = pathToJq(path);
+            out.push(
+              mk({
+                opr: 'raw',
+                val: `del(${arrayPath}[${after.length}:])`,
+              }),
+            );
+          }
+          return out;
+        }
+        out.push(
+          mk({
+            opr: '=',
+            path: pathToJq(path),
+            val: JSON.stringify(after),
+          }),
+        );
+        return out;
+      }
+      // 收集被赋值操作指定过的路径（用于标出“值相同的固定赋值”）；if 分支与原始 jq 不参与
+      const PIN_OPS = new Set(['=', '|=', '*=', '-=', '/=']);
+      function joinPath(prefix, p) {
+        p = (p || '').trim();
+        if (!p || p === '.') return prefix;
+        p = p.replace(/^\.(?=\[)/, '');
+        return prefix === '.' ? (p[0] === '[' ? '.' + p : p) : prefix + p;
+      }
+      function collectExprs(list, prefix, out) {
+        for (const o of list) {
+          if (o.opr === 'group') {
+            const base = joinPath(prefix, o.path);
+            collectExprs(
+              o.children,
+              o.wrapper === 'map' ? (base === '.' ? '.[]' : base + '[]') : base,
+              out,
+            );
+          } else if (PIN_OPS.has(o.opr)) out.push(joinPath(prefix, o.path));
+        }
+      }
+      function hasPath(v, path) {
+        for (const k of path) {
+          if (v === null || typeof v !== 'object' || !(k in v)) return false;
+          v = v[k];
+        }
+        return true;
+      }
+      async function getTouched(j, result) {
+        const exprs = [];
+        collectExprs(ops, '.', exprs);
+        const set = new Set();
+        for (const ex of [...new Set(exprs)]) {
+          try {
+            const r = j.promised
+              ? await j.promised.json(result, `[path(${ex})]`)
+              : j.json(result, `[path(${ex})]`);
+            r.filter((pth) => hasPath(result, pth)).forEach((pth) =>
+              set.add(JSON.stringify(pth)),
+            );
+          } catch (e) {}
+        }
+        return set;
+      }
+      async function getJq() {
+        let j = window.jq;
+        if (j && typeof j.then === 'function') j = await j;
+        return j;
+      }
+      function refreshTree() {
+        const ps = [];
+        collectPaths(view, [], ps);
+        $('paths').replaceChildren(
+          ...ps.map((x) => el('option', { value: x })),
+        );
+        renderTree();
+      }
+      async function runPreview(filter) {
+        const my = ++pvToken,
+          pv = $('preview');
+        previewResult = null;
+        previewReady = false;
+        $('cpResult').disabled = true;
+        let noJq = false;
+        try {
+          const j = await getJq();
+          if (!j) {
+            noJq = true;
+            throw new Error(
+              'jq-web 未加载（CDN 不可达？），预览不可用，不影响生成式子；可视化树仅反映简单赋值',
+            );
+          }
+          $('jqstat').textContent = 'jq-web 已就绪';
+          const r = j.promised
+            ? await j.promised.json(input, filter)
+            : j.json(input, filter);
+          if (my !== pvToken) return;
+          renderPreview(input, r, await getTouched(j, r));
+          if (my !== pvToken) return;
+          previewResult = r;
+          previewReady = true;
+          $('cpResult').disabled = false;
+          view = r;
+          viewIsResult = true;
+        } catch (e) {
+          if (my !== pvToken) return;
+          treeDiff = new Map();
+          pendingTreeOpen = new Set();
+          pv.className = 'err';
+          pv.textContent = String((e && e.message) || e);
+          $('changes').textContent = '';
+          if (noJq) {
+            view = input;
+            viewIsResult = false;
+          }
+        }
+        refreshTree();
+      }
+      function refreshOutput() {
+        $('outOne').textContent = wrap(compile(false));
+        $('outPretty').textContent = wrap(compile(true));
+        runPreview(compile(false));
+      }
+      const hist = [];
+      function snapshot() {
+        const s = JSON.stringify(ops);
+        if (hist[hist.length - 1] !== s) hist.push(s);
+        if (hist.length > 100) hist.shift();
+      }
+      function undo() {
+        snapshot();
+        if (hist.length < 2) return;
+        hist.pop();
+        ops = JSON.parse(hist[hist.length - 1]);
+        renderAll(true);
+      }
+      function collectPaths(v, path, out) {
+        if (out.length > 600) return;
+        out.push(pathToJq(path));
+        if (Array.isArray(v)) {
+          out.push(pathToJq(path) + '[]');
+          v.slice(0, 3).forEach((x, i) => collectPaths(x, [...path, i], out));
+        } else if (v && typeof v === 'object')
+          Object.keys(v).forEach((k) => collectPaths(v[k], [...path, k], out));
+      }
+      function renderAll(noSnap) {
+        if (noSnap !== true) snapshot();
+        renderOps();
+        refreshOutput();
+      }
+
+      /* ---------- wiring ---------- */
+      function loadInput() {
+        try {
+          input = JSON.parse($('input').value);
+          view = input;
+          viewIsResult = false;
+          $('inErr').textContent = '';
+          renderAll();
+        } catch (e) {
+          $('inErr').textContent = 'JSON 解析错误：' + e.message;
+        }
+      }
+      $('input').addEventListener('input', loadInput);
+      $('btnFmt').onclick = () => {
+        try {
+          $('input').value = JSON.stringify(
+            JSON.parse($('input').value),
+            null,
+            2,
+          );
+        } catch (e) {}
+      };
+      $('dyn').onchange = renderAll;
+      $('quote').onchange = refreshOutput;
+      $('merge').onchange = refreshOutput;
+      $('addSet').onclick = () => pushOp({ opr: '=', path: '.', val: 'null' });
+      $('addDef').onclick = () =>
+        pushOp({ opr: '//=', path: '.', val: 'null' });
+      $('addIf').onclick = () =>
+        pushOp({
+          opr: 'if',
+          cond: { mode: '==', path: '.', val: 'null' },
+          children: [],
+          elseKids: [],
+        });
+      $('addWE').onclick = () =>
+        pushOp({
+          opr: 'we',
+          path: '.',
+          children: [
+            mk({
+              opr: 'if',
+              cond: {
+                mode: 'test',
+                path: '.key',
+                val: '^\\d{4}-\\d{2}-\\d{2}$',
+              },
+              children: [mk({ opr: '=', path: '.value.x', val: '1' })],
+              elseKids: [],
+            }),
+          ],
+        });
+      $('addMap').onclick = () =>
+        pushOp({
+          opr: 'group',
+          wrapper: 'map',
+          path: '.',
+          children: [mk({ opr: '=', path: '.x', val: 'null' })],
+        });
+      $('addFill').onclick = () =>
+        pushOp({
+          opr: 'if',
+          cond: { mode: 'empty', path: '.list', val: '' },
+          children: [mk({ opr: '+=', path: '.list', val: '[{"id":1}]' })],
+          elseKids: [
+            mk({
+              opr: 'group',
+              wrapper: 'map',
+              path: '.list',
+              children: [mk({ opr: '=', path: '.day', val: '1' })],
+            }),
+          ],
+        });
+      $('undo').onclick = undo;
+      document.addEventListener('keydown', (e) => {
+        if (
+          (e.metaKey || e.ctrlKey) &&
+          !e.shiftKey &&
+          e.key === 'z' &&
+          !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)
+        ) {
+          e.preventDefault();
+          undo();
+        }
+      });
+      const EXAMPLES = {
+        '整段赋值 + del': `'.data |= (.time = "2026-10-21T22:00:00" | .num = 7 | .day = 2 | del(.enabled))'`,
+        '每项 map': `'.data.items |= map(.state = 1)'`,
+        'if 数组为空则填充': `'if (.arr | length == 0) then .arr += [{"id":1}] else . end'`,
+        '空列表填默认，否则 map': `'.data.list = (if (.data.list // []) | length == 0 then [{"ID": 123}] else (.data.list | map(.day=1)) end)'`,
+        路径内批量: `'.values |= ( .main[]?.is_showing = true | .vitamin[]?.is_showing = true)'`,
+        '深度合并 *=': `'.data.person.address *= {"city": "Los Angeles", "zipcode": "90001"}'`,
+        '默认值 //=': `'.data.name //= "unknown" | .data.count //= 0'`,
+        '嵌套 if + map': `'.data |= (if .num == 0 then .day = 2 | .tags += ["soldout"] else .items |= map(if .state == 2 then .state = 1 else . end) end)'`,
+        'with_entries 日期键': `'with_entries(if (.key | test("^\\\\d{4}-\\\\d{2}-\\\\d{2}$")) then (.value.value = 77 | .value.check = 1 | .value.sessions |= map(.value = 7 | .check = 1)) else . end)'`,
+      };
+      Object.keys(EXAMPLES).forEach((k) =>
+        $('examples').append(el('option', { value: k }, k)),
+      );
+      $('examples').onchange = (e) => {
+        if (!e.target.value) return;
+        $('imp').value = EXAMPLES[e.target.value];
+        ops = parseExpr($('imp').value);
+        renderAll();
+        e.target.value = '';
+      };
+      $('addRaw').onclick = () => pushOp({ opr: 'raw', val: '.' });
+      $('clearOps').onclick = () => {
+        ops = [];
+        renderAll();
+      };
+      async function readClip(btn) {
+        try {
+          return await navigator.clipboard.readText();
+        } catch (e) {
+          btn.textContent = '无权限，请在框内 ⌘/Ctrl+V';
+          setTimeout(() => (btn.textContent = btn.dataset.t), 2000);
+          return null;
+        }
+      }
+      function pasteBtn(id, target, after) {
+        const b = $(id);
+        b.dataset.t = b.textContent;
+        b.onclick = async () => {
+          const t = await readClip(b);
+          if (t == null) return;
+          target.value = t;
+          after();
+          b.textContent = '已覆盖 ✓';
+          setTimeout(() => (b.textContent = b.dataset.t), 1200);
+        };
+      }
+      pasteBtn('btnPasteIn', $('input'), () => {
+        try {
+          $('input').value = JSON.stringify(
+            JSON.parse($('input').value),
+            null,
+            2,
+          );
+        } catch (e) {}
+        loadInput();
+      });
+      pasteBtn('btnPasteImp', $('imp'), () => {
+        ops = parseExpr($('imp').value);
+        renderAll();
+      });
+      $('btnImport').onclick = () => {
+        ops = parseExpr($('imp').value);
+        renderAll();
+      };
+      async function copy(text, btn) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (e) {
+          const t = el('textarea');
+          t.value = text;
+          document.body.append(t);
+          t.select();
+          document.execCommand('copy');
+          t.remove();
+        }
+        const old = btn.textContent;
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => (btn.textContent = old), 1200);
+      }
+      $('cpOne').onclick = (e) => copy($('outOne').textContent, e.target);
+      $('cpPretty').onclick = (e) => copy($('outPretty').textContent, e.target);
+      $('cpResult').onclick = (e) => {
+        if (previewReady) {
+          copy(JSON.stringify(previewResult, null, 2), e.target);
+        }
+      };
+      $('btnPasteTarget').onclick = async (e) => {
+        const text = await readClip(e.target);
+        if (text == null) return;
+        let target;
+        try {
+          target = JSON.parse(text);
+        } catch (e) {
+          $('targetErr').textContent = '目标 JSON 解析错误：' + e.message;
+          return;
+        }
+        $('targetErr').textContent = '';
+        ops = diffToOps(input, target);
+        renderAll();
+        $('imp').value = compile(false);
+        const changes = ops.length;
+        $('targetErr').textContent = changes
+          ? `已生成 ${changes} 项 jq 操作；数组按下标比较，尾部新增会追加，尾部多余项会删除。`
+          : '目标 JSON 与输入 JSON 相同，无需生成操作。';
+        const old = e.target.textContent;
+        e.target.textContent = '已生成 ✓';
+        setTimeout(() => (e.target.textContent = old), 1200);
+      };
+
+      $('input').value = JSON.stringify(SAMPLE, null, 2);
+      $('imp').value =
+        `'.data |= (.time = "2026-10-21T22:00:00" | .num = 7 | del(.lock))'`;
+      loadInput();
+
+      /* 桌面图标：用 canvas 生成 PNG（iOS 不支持 SVG 图标），并动态生成 manifest */
+      (function () {
+        function icon(size) {
+          const c = document.createElement('canvas');
+          c.width = c.height = size;
+          const g = c.getContext('2d');
+          g.fillStyle = '#14161a';
+          g.fillRect(0, 0, size, size);
+          g.fillStyle = '#4ea1ff';
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.font = `700 ${size * 0.42}px Menlo, Consolas, monospace`;
+          g.fillText('.jq', size / 2, size * 0.46);
+          g.fillStyle = '#8a919e';
+          g.font = `600 ${size * 0.1}px -apple-system, "PingFang SC", sans-serif`;
+          g.fillText('表达式', size / 2, size * 0.76);
+          return c.toDataURL('image/png');
+        }
+        try {
+          const i180 = icon(180),
+            i192 = icon(192),
+            i512 = icon(512);
+          document.getElementById('touchIcon').href = i180;
+          const mf = {
+            name: 'JQ 表达式',
+            short_name: 'JQ 表达式',
+            start_url: location.href.split('#')[0],
+            display: 'standalone',
+            background_color: '#14161a',
+            theme_color: '#14161a',
+            icons: [
+              { src: i192, sizes: '192x192', type: 'image/png' },
+              {
+                src: i512,
+                sizes: '512x512',
+                type: 'image/png',
+                purpose: 'any maskable',
+              },
+            ],
+          };
+          document.getElementById('manifest').href = URL.createObjectURL(
+            new Blob([JSON.stringify(mf)], {
+              type: 'application/manifest+json',
+            }),
+          );
+        } catch (e) {}
+      })();
+    </script>
+  </body>
+</html>
