@@ -1206,8 +1206,26 @@
       }
       const segsToPath = (segs) =>
         segs.map((x, i) => (i === 0 && x[0] === '[' ? '.' : '') + x).join('');
-      const relPath = (segs) => (segs[0][0] === '[' ? '.' : '') + segs.join('');
-      // 合并连续、共享路径前缀的赋值/del 操作；只合并相邻项，保持执行顺序
+      const relPath = (segs) =>
+        segs.length ? (segs[0][0] === '[' ? '.' : '') + segs.join('') : '.';
+      function arrayReference(o) {
+        if (o.opr === '|=') return null;
+        const match = /^\[\s*(\.[\s\S]*?)\s*\]$/.exec((o.val || '').trim());
+        if (!match) return null;
+        const segments = pathSegs(match[1]);
+        return segments ? { path: match[1], segments } : null;
+      }
+      function canMergeAt(o, prefix) {
+        if (!['=', '+=', '-=', '*=', '/=', '//='].includes(o.opr))
+          return false;
+        if (tryJSON((o.val || '').trim()).ok) return true;
+        const ref = arrayReference(o);
+        return (
+          ref &&
+          prefix.every((segment, i) => segment === ref.segments[i])
+        );
+      }
+      // 只合并能安全转换到共同路径下的相邻操作。
       function mergeOps(list) {
         if (!$('merge').checked) return list;
         const info = list.map((o) =>
@@ -1235,8 +1253,15 @@
               pre[n] === info[j][n]
             )
               n++;
-            if (!n) break;
-            pre = pre.slice(0, n);
+            const candidate = pre.slice(0, n);
+            if (
+              !n ||
+              candidate.some((s) => s === '[]' || s === '?') ||
+              !canMergeAt(list[i], candidate) ||
+              !canMergeAt(list[j], candidate)
+            )
+              break;
+            pre = candidate;
             j++;
           }
           if (j - i < 2) {
@@ -1244,10 +1269,16 @@
             i++;
             continue;
           }
-          const kids = list.slice(i, j).map((o, k) => ({
-            ...o,
-            path: relPath(info[i + k].slice(pre.length)),
-          }));
+          const kids = list.slice(i, j).map((o, k) => {
+            const ref = arrayReference(o);
+            return {
+              ...o,
+              path: relPath(info[i + k].slice(pre.length)),
+              ...(ref && !tryJSON((o.val || '').trim()).ok
+                ? { val: `[${relPath(ref.segments.slice(pre.length))}]` }
+                : {}),
+            };
+          });
           out.push({
             opr: 'group',
             wrapper: '',
@@ -1899,12 +1930,15 @@
                 'button',
                 {
                   title: '复制此元素到数组末尾',
-                  onclick: () =>
+                  onclick: () => {
+                    const targetPath = pathToJq(path.slice(0, -1));
+                    const { prefix } = locateOperation(targetPath).scope;
                     pushOp({
-                      path: pathToJq(path.slice(0, -1)),
+                      path: targetPath,
                       opr: '+=',
-                      val: `[${p}]`,
-                    }),
+                      val: `[${relativePathAt(p, prefix)}]`,
+                    });
+                  },
                 },
                 '⧉',
               )
