@@ -60,6 +60,21 @@
       header label {
         color: var(--dim);
       }
+      .repo-link {
+        margin-left: auto;
+        color: var(--acc);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .repo-link:hover {
+        text-decoration: underline;
+      }
+      @media (max-width: 700px) {
+        header label,
+        header #jqstat {
+          order: 1;
+        }
+      }
       main {
         display: grid;
         grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -434,6 +449,7 @@
       >
       <label><input type="checkbox" id="quote" checked /> 外层包单引号</label>
       <span id="jqstat" class="hint"></span>
+      <a class="repo-link" href="https://github.com/id77/jq-expressions" target="_blank" rel="noopener noreferrer">GitHub 仓库 ↗</a>
     </header>
     <aside class="privacy-note" aria-label="隐私说明">
       <strong>隐私说明：</strong>输入的 JSON、jq 表达式和生成结果只在当前浏览器中处理；本项目页面代码不会把它们上传到服务器或发送给 CDN。这是一个没有自建后端、账号系统或数据存储的静态页面。结果预览使用由 jsDelivr CDN 加载的 jq-web，打开页面时浏览器会向 CDN 请求脚本。粘贴和复制功能只会在你点击相应按钮后调用浏览器剪贴板。
