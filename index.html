@@ -441,22 +441,37 @@
     <header>
       <h1>jq 式子可视化生成器</h1>
       <label
-        ><input type="checkbox" id="dyn" /> 快捷加减输出为动态 jq 式（如
+        ><input type="checkbox" id="dyn" checked /> 快捷加减输出为动态 jq 式（如
         <code>. + 3600</code>），否则输出计算后的值</label
       >
       <label title="连续、同一父路径的操作合并为 .a |= (.x = 1 | .c = 2)"
         ><input type="checkbox" id="merge" checked /> 合并同级路径</label
       >
-      <label><input type="checkbox" id="quote" checked /> 外层包单引号</label>
+      <label><input type="checkbox" id="quote" /> 外层包单引号</label>
       <span id="jqstat" class="hint"></span>
-      <a class="repo-link" href="https://github.com/id77/jq-expressions" target="_blank" rel="noopener noreferrer">GitHub 仓库 ↗</a>
+      <a
+        class="repo-link"
+        href="https://github.com/id77/jq-expressions"
+        target="_blank"
+        rel="noopener noreferrer"
+        >GitHub 仓库 ↗</a
+      >
     </header>
     <aside class="privacy-note" aria-label="隐私说明">
-      <strong>隐私说明：</strong>输入的 JSON、jq 表达式和生成结果只在当前浏览器中处理；本项目页面代码不会把它们上传到服务器或发送给 CDN。这是一个没有自建后端、账号系统或数据存储的静态页面。结果预览使用由 jsDelivr CDN 加载的 jq-web，打开页面时浏览器会向 CDN 请求脚本。粘贴和复制功能只会在你点击相应按钮后调用浏览器剪贴板。
+      <strong>隐私说明：</strong>输入的 JSON、jq
+      表达式和生成结果只在当前浏览器中处理；本项目页面代码不会把它们上传到服务器或发送给
+      CDN。这是一个没有自建后端、账号系统或数据存储的静态页面。结果预览使用由
+      jsDelivr CDN 加载的 jq-web，打开页面时浏览器会向 CDN
+      请求脚本。粘贴和复制功能只会在你点击相应按钮后调用浏览器剪贴板。
     </aside>
     <details class="install-guide">
       <summary>如何添加到主屏幕</summary>
-      <p>请先用 HTTPS 打开本页面。iPhone / iPad：在 Safari 中点“分享”按钮，选择“添加到主屏幕”，再点“添加”。Android：在 Chrome 中点右上角 ⋮，选择“添加到主屏幕”或“安装应用”，按提示确认。不同系统或浏览器的菜单名称可能略有差异；添加后仍需联网使用，本页面目前不支持离线运行。</p>
+      <p>
+        请先用 HTTPS 打开本页面。iPhone / iPad：在 Safari
+        中点“分享”按钮，选择“添加到主屏幕”，再点“添加”。Android：在 Chrome
+        中点右上角
+        ⋮，选择“添加到主屏幕”或“安装应用”，按提示确认。不同系统或浏览器的菜单名称可能略有差异；添加后仍需联网使用，本页面目前不支持离线运行。
+      </p>
     </details>
     <datalist id="paths"></datalist>
     <main>
@@ -475,7 +490,12 @@
           <h2>
             ② 可视化编辑（点 ⚙ 可自定义运算符 / jq 表达式）
             <span class="sp"></span>
-            <button id="expandTree" title="展开已加载的节点；更多项目仍需分批显示">展开全部</button>
+            <button
+              id="expandTree"
+              title="展开已加载的节点；更多项目仍需分批显示"
+            >
+              展开全部
+            </button>
             <button id="collapseTree">收起全部</button>
           </h2>
           <div id="tree" class="tree"></div>
@@ -1216,14 +1236,10 @@
         return segments ? { path: match[1], segments } : null;
       }
       function canMergeAt(o, prefix) {
-        if (!['=', '+=', '-=', '*=', '/=', '//='].includes(o.opr))
-          return false;
+        if (!['=', '+=', '-=', '*=', '/=', '//='].includes(o.opr)) return false;
         if (tryJSON((o.val || '').trim()).ok) return true;
         const ref = arrayReference(o);
-        return (
-          ref &&
-          prefix.every((segment, i) => segment === ref.segments[i])
-        );
+        return ref && prefix.every((segment, i) => segment === ref.segments[i]);
       }
       // 只合并能安全转换到共同路径下的相邻操作。
       function mergeOps(list) {
@@ -1633,7 +1649,11 @@
       };
 
       const showN = new Map();
-      function configureTreeDetails(det, path, initiallyOpen = path.length < 2) {
+      function configureTreeDetails(
+        det,
+        path,
+        initiallyOpen = path.length < 2,
+      ) {
         const p = pathToJq(path);
         det.open =
           openSet.has(p) ||
