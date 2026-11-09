@@ -110,15 +110,110 @@ test('unrelated references and arbitrary expressions remain unmerged', () => {
   }
 });
 
-test('update expressions, deletions and array traversals remain unmerged', () => {
+test('update expressions, deletions and unsafe array references remain unmerged', () => {
   const cases = [
     [{ data: { a: 1, b: 2 } }, [op('.data.a', '|=', '. + 1'), op('.data.b', '=', '3')]],
     [{}, [op('.data.a', 'del'), op('.data.b', 'del')]],
-    [{ data: [{ a: 1, b: 2 }] }, [op('.data[].a', '=', '2'), op('.data[].b', '=', '3')]],
-    [{}, [op('.data?.a', '=', '2'), op('.data?.b', '=', '3')]],
+    [{ data: [{ a: 1, items: [] }] }, [op('.data[].items', '+=', '[.data[].a]'), op('.data[].a', '=', '3')]],
   ];
   for (const [input, operations] of cases)
     assert.doesNotMatch(compare(input, operations), /^\.data(?:\[\]|\?)? \|=/);
+});
+
+test('literal sibling edits merge across array and optional field paths', () => {
+  for (const [input, operations, expected] of [
+    [
+      { data: [{ a: 1 }, { b: 2 }] },
+      [op('.data[].a', '=', '2'), op('.data[].b', '=', '3')],
+      '.data[] |= (.a = 2 | .b = 3)',
+    ],
+    [
+      { data: [{ items: [{ a: 1 }, { b: 2 }] }, { items: null }, {}] },
+      [op('.data[].items[]?.a', '=', '2'), op('.data[].items[]?.b', '=', '3')],
+      '.data[].items[]? |= (.a = 2 | .b = 3)',
+    ],
+    [
+      {},
+      [op('.data?.a', '=', '2'), op('.data?.b', '=', '3')],
+      '.data? |= (.a = 2 | .b = 3)',
+    ],
+  ]) {
+    assert.equal(compare(input, operations), expected);
+  }
+});
+
+test('optional branches do not create missing parents when merging', () => {
+  const operations = [
+    op('.data.first[]?.a', '=', '1'),
+    op('.data.second[]?.b', '=', '2'),
+  ];
+  for (const input of [{}, { data: null }, { data: {} }, { data: { first: [], second: null } }]) {
+    const merged = compare(input, operations);
+    assert.doesNotMatch(merged, /^\.data \|=/);
+  }
+});
+
+test('nested sibling branches merge at the nearest safe array traversal', () => {
+  const base = '.data.pageModuleList[].moduleDataList[]?.specilPurchase';
+  const operations = [
+    op(base + '.specialPurchaseCrowInfos[]?.productList[]?.surplusStock', '=', '0'),
+    op(base + '.specialPurchaseCrowInfos[]?.productList[]?.saleStatus', '=', '2'),
+    op(base + '.periodConfig[]?.startTime', '=', '"08:00:00"'),
+  ];
+  const variants = [
+    {},
+    { specilPurchase: null },
+    { specilPurchase: { specialPurchaseCrowInfos: null } },
+    {
+      specilPurchase: {
+        specialPurchaseCrowInfos: [{ productList: [{ surplusStock: 5, saleStatus: 1 }] }, {}],
+        periodConfig: [{ startTime: 'old' }, {}],
+      },
+    },
+  ];
+  const input = {
+    data: { pageModuleList: [{ moduleDataList: variants }, { moduleDataList: null }, {}] },
+  };
+  const merged = compare(input, operations);
+  assert.match(merged, /^\.data\.pageModuleList\[\]\.moduleDataList\[\]\? \|= \(/);
+  assert.match(merged, /productList\[\]\? \|= \(\.surplusStock = 0 \| \.saleStatus = 2\)/);
+  const result = runJq(input, merged);
+  assert.equal(result.status, 0);
+  const list = JSON.parse(result.stdout).data.pageModuleList[0].moduleDataList;
+  assert.deepEqual(list.slice(0, 3), variants.slice(0, 3));
+  assert.deepEqual(list[3].specilPurchase.periodConfig, [
+    { startTime: '08:00:00' },
+    { startTime: '08:00:00' },
+  ]);
+});
+
+test('unsafe references remain separate when an outer traversal could otherwise merge', () => {
+  const operations = [
+    op('.data[].left[]?.x', '=', '1'),
+    op('.data[].right[]?.x', '=', '.other'),
+  ];
+  const input = { other: 2, data: [{ left: [{ x: 0 }], right: [{ x: 0 }] }] };
+  const merged = compare(input, operations);
+  assert.doesNotMatch(merged, /^\.data\[\] \|=/);
+});
+
+test('optional path markers are never split from their preceding segment', () => {
+  const operations = [
+    op('.data.items[]?.a', '=', '1'),
+    op('.data.items[].b', '=', '2'),
+  ];
+  const merged = compare({ data: { items: [{ a: 0 }] } }, operations);
+  assert.doesNotMatch(merged, /^\.data\.items\[\] \|=/);
+});
+
+test('a shorter shared prefix cannot invalidate an earlier reference', () => {
+  const operations = [
+    op('.data.a.items', '+=', '[.data.a.items[0]]'),
+    op('.data.a.items', '+=', '[.data.a.items[1]]'),
+    op('.data.b.items', '+=', '[.other]'),
+  ];
+  const input = { data: { a: { items: [1, 2] }, b: { items: [] } }, other: 3 };
+  compare(input, operations);
 });
 
 test('imported group keeps relative copy references when merging', () => {

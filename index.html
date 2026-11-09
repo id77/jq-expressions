@@ -147,6 +147,10 @@
         color: #04111f;
         border-color: var(--acc);
       }
+      button.show-more {
+        color: var(--warn);
+        border-color: var(--warn);
+      }
       button.x:hover {
         background: var(--bad);
         color: #fff;
@@ -219,6 +223,22 @@
       }
       .tree .node.diff-parent > summary:hover::marker {
         color: #e8caff;
+      }
+      .tree .node.search-match > .row,
+      .tree .node.search-match > summary > .row {
+        background: rgba(229, 164, 67, 0.12);
+      }
+      .tree .node.search-match-active > .row,
+      .tree .node.search-match-active > summary > .row {
+        background: rgba(229, 164, 67, 0.24);
+        outline: 1px solid var(--warn);
+      }
+      .tree-search {
+        margin-bottom: 8px;
+      }
+      .tree-search input {
+        flex: 1;
+        min-width: 160px;
       }
       .diff-note {
         font-size: 11px;
@@ -441,11 +461,17 @@
     <header>
       <h1>jq 式子可视化生成器</h1>
       <label
-        ><input type="checkbox" id="dyn" checked /> 快捷加减输出为动态 jq 式（如
-        <code>. + 3600</code>），否则输出计算后的值</label
+        ><input type="checkbox" id="dyn" checked /> 快捷加减输出为动态 jq 式，否则输出计算后的值</label
+      >
+      <label title="仅影响之后的快捷动态加减；无法安全计算的值保留原样"
+        ><input type="checkbox" id="safeDynamic" /> 动态计算前校验并保留无效值</label
       >
       <label title="连续、同一父路径的操作合并为 .a |= (.x = 1 | .c = 2)"
         ><input type="checkbox" id="merge" checked /> 合并同级路径</label
+      >
+      <label
+        title="仅影响之后的可视化编辑：勾选写成 .data[].test；取消写成 .data[0].test"
+        ><input type="checkbox" id="arrayAll" checked /> 数组改动作用于所有元素</label
       >
       <label><input type="checkbox" id="quote" /> 外层包单引号</label>
       <span id="jqstat" class="hint"></span>
@@ -498,6 +524,17 @@
             </button>
             <button id="collapseTree">收起全部</button>
           </h2>
+          <div class="row tree-search">
+            <input
+              id="treeSearch"
+              type="search"
+              placeholder="搜索字段名、值或路径"
+              aria-label="搜索可视化编辑"
+            />
+            <span id="treeSearchStatus" class="hint"></span>
+            <button id="treeSearchPrev" title="上一个匹配项" disabled>上一个</button>
+            <button id="treeSearchNext" title="下一个匹配项" disabled>下一个</button>
+          </div>
           <div id="tree" class="tree"></div>
         </section>
       </div>
@@ -572,6 +609,7 @@
           </h2>
           <pre id="preview"></pre>
           <div id="changes" class="chg"></div>
+          <div id="dynamicReport" class="chg"></div>
           <div id="targetErr" class="err"></div>
         </section>
       </div>
@@ -632,6 +670,25 @@
         });
         return s;
       }
+      function targetJqPath(path) {
+        let traversesArray = false;
+        const result = path
+          .map((key, index) => {
+            if (typeof key === 'number' && $('arrayAll').checked) {
+              const segment = (index === 0 ? '.[]' : '[]') +
+                (traversesArray ? '?' : '');
+              traversesArray = true;
+              return segment;
+            }
+            if (typeof key === 'number')
+              return (index === 0 ? '.' : '') + '[' + key + ']';
+            return ID_RE.test(key)
+              ? '.' + key
+              : (index === 0 ? '.' : '') + '[' + JSON.stringify(key) + ']';
+          })
+          .join('');
+        return result || '.';
+      }
       function tryJSON(t) {
         try {
           return { ok: true, v: JSON.parse(t) };
@@ -648,18 +705,28 @@
 
       /* ---------- value classification ---------- */
       const DATE_RE =
-        /^(\d{4})([-\/])(\d{2})\2(\d{2})(?:([ T])(\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+        /^(\d{4})([-\/])(\d{2})\2(\d{2})(?:([ T])(\d{2}):(\d{2})(?::(\d{2}))?)?((?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})?)$/;
       function parseDateStr(s) {
         const m = DATE_RE.exec(s);
         if (!m) return null;
         const mo = +m[3],
           d = +m[4];
-        if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+        const year = +m[1], hour = +(m[6] || 0), minute = +(m[7] || 0),
+          second = +(m[8] || 0), suffix = m[9] || '';
+        const offset = /([+-])(\d{2}):(\d{2})$/.exec(suffix);
+        if (
+          year < 1000 || mo < 1 || mo > 12 || d < 1 ||
+          hour > 23 || minute > 59 || second > 59 ||
+          d > new Date(Date.UTC(year, mo, 0)).getUTCDate() ||
+          (suffix && (!m[5] || !m[8])) ||
+          (offset && (+offset[2] > 23 || +offset[3] > 59))
+        ) return null;
         return {
           sep: m[2],
           dsep: m[5] || '',
           hasTime: !!m[5],
           hasSec: m[8] != null,
+          suffix,
           p: {
             y: +m[1],
             mo,
@@ -676,7 +743,7 @@
           s +=
             `${f.dsep}${pad(p.h)}:${pad(p.mi)}` +
             (f.hasSec ? `:${pad(p.s)}` : '');
-        return s;
+        return s + f.suffix;
       }
       function jqFmt(f) {
         let s = `%Y${f.sep}%m${f.sep}%d`;
@@ -771,9 +838,25 @@
       // {id, opr:"="|"|="|"+="|"-="|"*="|"//="|"/="|"del"|"raw"|"group", path, val, children, meta}
       const mk = (o) => ({ id: uid++, path: '', val: '', ...o });
       const isAssign = (o) => o.opr !== 'raw' && o.opr !== 'group';
-      const topLevelFind = (path, pred) =>
-        ops.find((o) => o.path === path && isAssign(o) && (!pred || pred(o)));
-      function upsert(path, opr, val, meta) {
+      const topLevelFind = (treePath, pred) => {
+        const target = targetJqPath(treePath);
+        return ops.find(
+          (o) =>
+            isAssign(o) &&
+            (!pred || pred(o)) &&
+            (o.path === target ||
+              (!viewIsResult &&
+                isPlain(o.meta) &&
+                o.meta.treePath === pathToJq(treePath))),
+        );
+      };
+      function upsert(treePath, opr, val, meta) {
+        const path = Array.isArray(meta?.treePath)
+          ? targetJqPath(meta.treePath)
+          : treePath;
+        const opMeta = Array.isArray(meta?.treePath)
+          ? { ...meta, treePath }
+          : meta;
         const target = locateOperation(path);
         const exact = target.exact;
         const scope = target.scope;
@@ -796,7 +879,7 @@
           if (exact && exact.list !== ops) {
             const { list, index, prefix } = exact;
             list[index] = {
-              ...mk({ path: relativePathAt(path, prefix), opr, val, meta }),
+              ...mk({ path: relativePathAt(path, prefix), opr, val, meta: opMeta }),
               id: list[index].id,
             };
             for (let i = list.length - 1; i >= 0; i--) {
@@ -809,7 +892,7 @@
             }
           } else {
             const relativePath = relativePathAt(path, scope.prefix);
-            const item = mk({ path: relativePath, opr, val, meta });
+            const item = mk({ path: relativePath, opr, val, meta: opMeta });
             if (previousIndex < outerScope.parentIndex)
               scope.list.unshift(item);
             else scope.list.push(item);
@@ -818,7 +901,7 @@
           const { list, index, prefix } = target.exact;
           const relativePath = relativePathAt(path, prefix);
           list[index] = {
-            ...mk({ path: relativePath, opr, val, meta }),
+            ...mk({ path: relativePath, opr, val, meta: opMeta }),
             id: list[index].id,
           };
           for (let i = list.length - 1; i >= 0; i--) {
@@ -828,7 +911,9 @@
           }
         } else {
           const { list, prefix } = scope;
-          list.push(mk({ path: relativePathAt(path, prefix), opr, val, meta }));
+          list.push(
+            mk({ path: relativePathAt(path, prefix), opr, val, meta: opMeta }),
+          );
         }
         renderAll();
       }
@@ -869,36 +954,84 @@
         renderAll();
       }
       function setLiteral(path, v) {
-        upsert(pathToJq(path), '=', JSON.stringify(v));
+        upsert(pathToJq(path), '=', JSON.stringify(v), {
+          treePath: path,
+        });
       }
       function dynVal(c, d) {
-        const sg = d < 0 ? '-' : '+',
-          a = Math.abs(d);
+        const delta = JSON.stringify(d);
+        const limit = '9007199254740991';
+        switch (c.kind) {
+          case 'num':
+            return `(if type == "number" and isfinite then . as $n | ($n + ${delta}) as $v | if ($v | isfinite) and ($v | fabs <= ${limit}) and ($n | fabs <= ${limit}) then $v else $n end else . end)`;
+          case 'ts': {
+            const min = c.mult === 1000 ? 1e12 : 1e9;
+            const max = c.mult === 1000 ? 1e13 : 1e10;
+            return `(if type == "number" and isfinite and floor == . and . >= ${min} and . < ${max} and (. + ${delta}) >= ${min} and (. + ${delta}) < ${max} then . + ${delta} else . end)`;
+          }
+          case 'nums':
+            return `(if type != "string" then . else . as $original | try (if test("^-?(0|[1-9][0-9]*)(\\\\.[0-9]{1,6})?$") then (capture("^(?<sign>-?)(?<whole>0|[1-9][0-9]*)(?:\\\\.(?<frac>[0-9]{1,6}))?$") | (.frac // "") as $frac | ($frac | length) as $places | [1,10,100,1000,10000,100000,1000000][$places] as $scale | ((.whole + $frac) | tonumber) as $magnitude | (if .sign == "-" then -$magnitude else $magnitude end) as $n | (${delta} * $scale) as $step | ($n + $step) as $result | if $magnitude <= ${limit} and ($step | isfinite and floor == . and fabs <= ${limit}) and ($result | isfinite and floor == . and fabs <= ${limit}) then (if $result < 0 then "-" else "" end) + (($result | fabs / $scale | floor | tostring)) + (if $places == 0 then "" else "." + (("000000" + (($result | fabs % $scale) | tostring))[-$places:]) end) else $original end) else $original end) catch $original end)`;
+          case 'tss': {
+            const min = c.mult === 1000 ? 1e12 : 1e9;
+            const max = c.mult === 1000 ? 1e13 : 1e10;
+            return `(if type != "string" then . else . as $original | try (if test("^[0-9]+$") then (tonumber as $n | if ($n | tostring) == $original and $n >= ${min} and $n < ${max} and ($n + ${delta}) >= ${min} and ($n + ${delta}) < ${max} then ($n + ${delta} | tostring) else $original end) else $original end) catch $original end)`;
+          }
+          case 'dstr': {
+            const f = JSON.stringify(jqFmt(c.f));
+            const length = c.f.hasTime ? (c.f.hasSec ? 19 : 16) : 10;
+            const suffixCheck = c.f.hasSec
+              ? 'test("^(\\\\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])?$")'
+              : '. == ""';
+            return `(if type != "string" then . else . as $original | try (.[0:${length}] as $base | .[${length}:] as $suffix | if ($suffix | ${suffixCheck}) then ($base | strptime(${f}) | mktime) as $time | if ($time | strftime(${f})) == $base and ($time + ${delta}) >= -30610224000 and ($time + ${delta}) < 253402300800 then (($time + ${delta} | strftime(${f})) + $suffix) else $original end else $original end) catch $original end)`;
+          }
+        }
+      }
+      function unguardedDynVal(c, d) {
+        const sign = d < 0 ? '-' : '+';
+        const amount = Math.abs(d);
         switch (c.kind) {
           case 'num':
           case 'ts':
-            return `. ${sg} ${a}`;
+            return `. ${sign} ${amount}`;
           case 'nums':
           case 'tss':
-            return `(tonumber ${sg} ${a} | tostring)`;
+            return `(tonumber ${sign} ${amount} | tostring)`;
           case 'dstr': {
-            const f = JSON.stringify(jqFmt(c.f));
-            return `(strptime(${f}) | mktime ${sg} ${a} | strftime(${f}))`;
+            const format = JSON.stringify(jqFmt(c.f));
+            const calculation = `strptime(${format}) | mktime ${sign} ${amount} | strftime(${format})`;
+            if (!c.f.suffix) return `(${calculation})`;
+            const length = c.f.hasTime ? (c.f.hasSec ? 19 : 16) : 10;
+            return `(. as $original | .[0:${length}] | ${calculation} | . + $original[${length}:])`;
           }
         }
       }
       // delta unit: plain number for numbers, seconds*mult for timestamps, seconds for date strings; accumulates across clicks
       function applyDelta(path, c, delta) {
-        const p = pathToJq(path),
-          ex = [...ops].reverse().find((o) => o.path === p && isAssign(o));
-        if (ex && ex.meta && ex.meta.delta) {
+        const treePath = pathToJq(path);
+        const safeDynamic = $('safeDynamic').checked;
+        const makeValue = safeDynamic ? dynVal : unguardedDynVal;
+        const p = targetJqPath(path),
+          ex = [...ops].reverse().find(
+            (o) => o.path === p && isAssign(o),
+          );
+        if (ex && ex.meta && ex.meta.delta &&
+            ex.meta.treePath === treePath &&
+            !!ex.meta.safeDynamic === safeDynamic) {
           const total = cleanNum(ex.meta.delta + delta);
-          if (total === 0) return removeOps(p);
-          ex.val = dynVal(c, total);
+          if (total === 0) {
+            ops.splice(ops.indexOf(ex), 1);
+            return renderAll();
+          }
+          ex.val = makeValue(c, total);
           ex.meta.delta = total;
           return renderAll();
         }
-        pushOp({ path: p, opr: '|=', val: dynVal(c, delta), meta: { delta } });
+        pushOp({
+          path: p,
+          opr: '|=',
+          val: makeValue(c, delta),
+          meta: { delta, treePath, safeDynamic, dynamicKind: c.kind },
+        });
       }
 
       /* ---------- parse jq text ---------- */
@@ -1164,6 +1297,13 @@
         }
         return out;
       }
+      function optionalPath(path) {
+        const segments = pathSegs(path);
+        if (!segments) return path;
+        return segsToPath(segments.map((segment, i) =>
+          segment === '?' || segments[i + 1] === '?' ? segment : segment + '?',
+        ));
+      }
       function effectivePath(prefix, path) {
         return joinPath(prefix, path);
       }
@@ -1241,6 +1381,31 @@
         const ref = arrayReference(o);
         return ref && prefix.every((segment, i) => segment === ref.segments[i]);
       }
+      function canMergePaths(list, info, start, end, prefix) {
+        const n = prefix.length;
+        if (info.slice(start, end).some((segments) => segments[n] === '?'))
+          return false;
+        const hasTraversal = info.slice(start, end).some((segments) =>
+          segments.some((segment) => segment === '[]' || segment === '?'),
+        );
+        if (!hasTraversal)
+          return list.slice(start, end).every((o) => canMergeAt(o, prefix));
+
+        if (!list.slice(start, end).every(
+          (o) =>
+            ['=', '+=', '-=', '*=', '/=', '//='].includes(o.opr) &&
+            tryJSON((o.val || '').trim()).ok,
+        )) return false;
+
+        const endsInTraversal =
+          prefix[n - 1] === '[]' ||
+          (prefix[n - 1] === '?' && prefix[n - 2] === '[]');
+        if (endsInTraversal) return true;
+        return prefix[n - 1] === '?' &&
+          info.slice(start, end).every((segments) =>
+            segments.slice(n).every((segment) => segment !== '[]' && segment !== '?'),
+          );
+      }
       // 只合并能安全转换到共同路径下的相邻操作。
       function mergeOps(list) {
         if (!$('merge').checked) return list;
@@ -1269,15 +1434,13 @@
               pre[n] === info[j][n]
             )
               n++;
-            const candidate = pre.slice(0, n);
-            if (
-              !n ||
-              candidate.some((s) => s === '[]' || s === '?') ||
-              !canMergeAt(list[i], candidate) ||
-              !canMergeAt(list[j], candidate)
+            while (
+              n > 0 &&
+              !canMergePaths(list, info, i, j + 1, pre.slice(0, n))
             )
-              break;
-            pre = candidate;
+              n--;
+            if (!n) break;
+            pre = pre.slice(0, n);
             j++;
           }
           if (j - i < 2) {
@@ -1346,6 +1509,8 @@
             return `${o.path} |= ${open}\n${ind}  ${kids.join(`\n${ind}  | `)}\n${ind})`;
           }
           default:
+            if (o.meta?.safeDynamic)
+              return `(${optionalPath(o.path)} | select(. != null)) |= ${fmtVal(o.val, pretty, ind)}`;
             return `${o.path} ${o.opr} ${fmtVal(o.val, pretty, ind)}`;
         }
       }
@@ -1395,7 +1560,7 @@
                 ? val
                 : JSON.stringify(val);
           }
-          upsert(p, opr.value, val);
+          upsert(p, opr.value, val, { treePath: path });
         };
         txt.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') apply();
@@ -1405,7 +1570,8 @@
             'button',
             {
               title: '仅当当前值为 null/false 时赋默认值',
-              onclick: () => upsert(p, '//=', normVal(txt.value)),
+              onclick: () =>
+                upsert(p, '//=', normVal(txt.value), { treePath: path }),
             },
             '默认值 //=',
           ),
@@ -1413,15 +1579,30 @@
             'button',
             {
               title: '生成 if 条件块：值为 null 时才赋值',
-              onclick: () =>
-                pushOp({
+              onclick: () => {
+                const target = targetJqPath(path);
+                const relative = target !== p;
+                const conditionPath = relative ? '.' : p;
+                const value = normVal(txt.value);
+                if (relative && !tryJSON(value).ok) {
+                  pushOp({
+                    opr: 'raw',
+                    val: `. as $__jq_editor_root | ${target} |= (if . == null then ($__jq_editor_root | ${value}) else . end)`,
+                  });
+                  return;
+                }
+                const conditional = {
                   opr: 'if',
-                  cond: { mode: '==', path: p, val: 'null' },
+                  cond: { mode: '==', path: conditionPath, val: 'null' },
                   children: [
-                    mk({ opr: '=', path: p, val: normVal(txt.value) }),
+                    mk({ opr: '=', path: conditionPath, val: value }),
                   ],
                   elseKids: [],
-                }),
+                };
+                pushOp(relative
+                  ? { opr: 'group', path: target, wrapper: '', children: [mk(conditional)] }
+                  : conditional);
+              },
             },
             'if 条件赋值',
           ),
@@ -1433,7 +1614,7 @@
                   onclick: () =>
                     pushOp({
                       opr: 'we',
-                      path: p,
+                      path: targetJqPath(path),
                       children: [
                         mk({
                           opr: 'select',
@@ -1453,7 +1634,7 @@
                     pushOp({
                       opr: 'group',
                       wrapper: 'map',
-                      path: p,
+                      path: targetJqPath(path),
                       children: [mk({ opr: '=', path: '.x', val: 'null' })],
                     }),
                 },
@@ -1464,7 +1645,11 @@
         return el(
           'div',
           { class: 'panel', style: 'display:none' },
-          el('span', { class: 'tag' }, p),
+          el(
+            'span',
+            { class: 'tag edit-target-path', 'data-edit-path': JSON.stringify(path) },
+            targetJqPath(path),
+          ),
           opr,
           txt,
           el('button', { class: 'pri', onclick: apply }, '应用'),
@@ -1532,7 +1717,14 @@
             return /^-?0\d/.test(cur) ? s.padStart(cur.length, '0') : s;
           };
           const bump = (sg) => () => {
-            const d = sg * (+step.value || 0);
+            const d = sg * Number(step.value);
+            if (step.value.trim() === '' || !Number.isFinite(d)) {
+              step.setCustomValidity('请输入有限数值');
+              step.reportValidity();
+              return;
+            }
+            step.setCustomValidity('');
+            if (d === 0) return;
             dyn
               ? applyDelta(path, c, d)
               : setLiteral(path, out(cleanNum(base + d)));
@@ -1628,7 +1820,7 @@
       let treeDiff = new Map();
       function curValue(path, orig) {
         if (viewIsResult) return orig;
-        const o = topLevelFind(pathToJq(path), (x) => x.opr === '=');
+        const o = topLevelFind(path, (x) => x.opr === '=');
         if (o) {
           const r = tryJSON(o.val);
           if (r.ok) return r.v;
@@ -1670,6 +1862,86 @@
           }
         });
       }
+      let treeSearchMatches = [];
+      let treeSearchIndex = 0;
+      function updateTreeSearchMatches() {
+        const query = $('treeSearch').value.trim().toLocaleLowerCase();
+        treeSearchMatches = [];
+        if (!query) return;
+        const visit = (value, path, label) => {
+          const cur = curValue(path, value);
+          const text = [
+            pathToJq(path),
+            label === undefined ? '' : String(label),
+            cur === null || typeof cur !== 'object' ? String(cur) : '',
+          ]
+            .join('\n')
+            .toLocaleLowerCase();
+          if (text.includes(query))
+            treeSearchMatches.push({ path, p: pathToJq(path) });
+          if (cur && typeof cur === 'object') {
+            const keys = Array.isArray(cur) ? cur.map((_, i) => i) : Object.keys(cur);
+            keys.forEach((key) => visit(cur[key], [...path, key], key));
+          }
+        };
+        visit(view, [], undefined);
+        if (treeSearchIndex >= treeSearchMatches.length) treeSearchIndex = 0;
+      }
+      function revealTreeSearchMatches() {
+        treeSearchMatches.forEach(({ path }) => {
+          path.forEach((key, index) => {
+            const parentPath = path.slice(0, index);
+            const parent = valueAtPath(view, parentPath);
+            if (!parent || typeof parent !== 'object') return;
+            const keys = Array.isArray(parent)
+              ? parent.map((_, i) => i)
+              : Object.keys(parent);
+            const childIndex = keys.indexOf(key);
+            const parentP = pathToJq(parentPath);
+            openSet.add(parentP);
+            openSet.delete('-' + parentP);
+            if (childIndex >= 0)
+              showN.set(parentP, Math.max(showN.get(parentP) || 30, childIndex + 1));
+          });
+        });
+      }
+      function treeSearchClass(path) {
+        const current = treeSearchMatches[treeSearchIndex];
+        const match = treeSearchMatches.some(
+          (entry) => entry.p === pathToJq(path),
+        );
+        return match
+          ? ' search-match' + (current && current.p === pathToJq(path) ? ' search-match-active' : '')
+          : '';
+      }
+      function updateTreeSearchStatus() {
+        const hasQuery = $('treeSearch').value.trim().length > 0;
+        const count = treeSearchMatches.length;
+        $('treeSearchStatus').textContent = hasQuery
+          ? count
+            ? `第 ${treeSearchIndex + 1} / ${count} 项`
+            : '未找到匹配项'
+          : '';
+        $('treeSearchPrev').disabled = count === 0;
+        $('treeSearchNext').disabled = count === 0;
+      }
+      function focusTreeSearchResult() {
+        const current = treeSearchMatches[treeSearchIndex];
+        if (!current) return;
+        requestAnimationFrame(() => {
+          const node = Array.from(
+            $('tree').querySelectorAll('[data-tree-path]'),
+          ).find((item) => item.dataset.treePath === current.p);
+          node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }
+      function navigateTreeSearch(step) {
+        if (!treeSearchMatches.length) return;
+        treeSearchIndex =
+          (treeSearchIndex + step + treeSearchMatches.length) %
+          treeSearchMatches.length;
+        renderTree(true);
+      }
       function subPath(sfx) {
         sfx = sfx.trim();
         return !sfx ? '' : /^[.\[]/.test(sfx) ? sfx : '.' + sfx;
@@ -1698,7 +1970,7 @@
                 onclick: () => {
                   if (kIn.value)
                     pushOp({
-                      path: pathToJq([...path, kIn.value]),
+                      path: targetJqPath([...path, kIn.value]),
                       opr: '=',
                       val: JSON.stringify(parseUserVal(vIn.value)),
                     });
@@ -1726,7 +1998,7 @@
                     typeof r.v === 'object' &&
                     !Array.isArray(r.v)
                   )
-                    pushOp({ path: p, opr: '*=', val: JSON.stringify(r.v) });
+                    pushOp({ path: targetJqPath(path), opr: '*=', val: JSON.stringify(r.v) });
                 },
               },
               '合并 *=',
@@ -1747,7 +2019,7 @@
                 class: 'pri',
                 onclick: () =>
                   pushOp({
-                    path: p,
+                    path: targetJqPath(path),
                     opr: '+=',
                     val: JSON.stringify([parseUserVal(vIn.value)]),
                   }),
@@ -1775,7 +2047,7 @@
                 onclick: () => {
                   if (iIn.value !== '')
                     pushOp({
-                      path: pathToJq([...path, +iIn.value]),
+                      path: targetJqPath(path) + `[${+iIn.value}]`,
                       opr: '=',
                       val: JSON.stringify(parseUserVal(v2.value)),
                     });
@@ -1784,7 +2056,14 @@
               '设置下标',
             ),
           );
-          const base = p === '.' ? '.[]' : p + '[]';
+          const base = () => {
+            const target = targetJqPath(path);
+            const optional = $('arrayAll').checked && path.some(
+              (key) => typeof key === 'number',
+            );
+            return (target === '.' ? '.[]' : target + '[]') +
+              (optional ? '?' : '');
+          };
           const sk = el('input', {
             class: 's',
             style: 'width:90px',
@@ -1820,7 +2099,7 @@
                   onclick: () => {
                     if (sv.value !== '')
                       pushOp({
-                        path: base + subPath(sk.value),
+                        path: base() + subPath(sk.value),
                         opr: so.value,
                         val: normVal(sv.value),
                       });
@@ -1865,7 +2144,7 @@
                     if (dv.value !== '')
                       pushOp({
                         opr: 'raw',
-                        val: `del(${base} | select(${subPath(dk.value) || '.'} ${dc.value} ${normVal(dv.value)}))`,
+                        val: `del(${base()} | select(${subPath(dk.value) || '.'} ${dc.value} ${normVal(dv.value)}))`,
                       });
                   },
                 },
@@ -1887,7 +2166,7 @@
 
       function buildNode(orig, path, label) {
         const p = pathToJq(path);
-        const o = topLevelFind(p);
+        const o = topLevelFind(path);
         const deleted = !viewIsResult && o && o.opr === 'del';
         const cur = curValue(path, orig);
         const changeType = treeDiff.get(JSON.stringify(path));
@@ -1932,14 +2211,14 @@
           '⚙',
         );
         const del = deleted
-          ? el('button', { onclick: () => removeOps(p) }, '↩ 撤销删除')
+          ? el('button', { onclick: () => removeOps(o.path) }, '↩ 撤销删除')
           : path.length
             ? el(
                 'button',
                 {
                   class: 'x',
                   title: '删除此字段',
-                  onclick: () => upsert(p, 'del', ''),
+                  onclick: () => upsert(p, 'del', '', { treePath: path }),
                 },
                 '🗑',
               )
@@ -1951,13 +2230,17 @@
                 {
                   title: '复制此元素到数组末尾',
                   onclick: () => {
-                    const targetPath = pathToJq(path.slice(0, -1));
+                    const targetPath = targetJqPath(path.slice(0, -1));
                     const { prefix } = locateOperation(targetPath).scope;
-                    pushOp({
-                      path: targetPath,
-                      opr: '+=',
-                      val: `[${relativePathAt(p, prefix)}]`,
-                    });
+                    if (isWithinPath(p, prefix)) {
+                      pushOp({
+                        path: targetPath,
+                        opr: '+=',
+                        val: `[${relativePathAt(p, prefix)}]`,
+                      });
+                    } else {
+                      pushOp({ opr: 'raw', val: `${targetPath} += [${p}]` });
+                    }
                   },
                 },
                 '⧉',
@@ -1971,7 +2254,9 @@
             class:
               'node' +
               (deleted ? ' deleted' : '') +
-              (diffClass ? ' ' + diffClass : ''),
+              (diffClass ? ' ' + diffClass : '') +
+              treeSearchClass(path),
+            'data-tree-path': p,
           });
           configureTreeDetails(det, path);
           det.append(
@@ -2022,6 +2307,7 @@
               el(
                 'button',
                 {
+                  class: 'show-more',
                   onclick: () => {
                     showN.set(p, lim + 30);
                     renderTree();
@@ -2041,7 +2327,9 @@
             class:
               'node' +
               (deleted ? ' deleted' : '') +
-              (diffClass ? ' ' + diffClass : ''),
+              (diffClass ? ' ' + diffClass : '') +
+              treeSearchClass(path),
+            'data-tree-path': p,
           },
           el(
             'div',
@@ -2149,8 +2437,12 @@
         }
         return det;
       }
-      function renderTree() {
+      function renderTree(focusSearch = false) {
+        updateTreeSearchMatches();
+        revealTreeSearchMatches();
         $('tree').replaceChildren(buildNode(view, [], undefined));
+        updateTreeSearchStatus();
+        if (focusSearch) focusTreeSearchResult();
       }
 
       /* ---------- ops list ---------- */
@@ -2812,7 +3104,8 @@
               o.wrapper === 'map' ? (base === '.' ? '.[]' : base + '[]') : base,
               out,
             );
-          } else if (PIN_OPS.has(o.opr)) out.push(joinPath(prefix, o.path));
+          } else if (PIN_OPS.has(o.opr) && !o.meta?.safeDynamic)
+            out.push(joinPath(prefix, o.path).replace(/\[\](?!\?)/g, '[]?'));
         }
       }
       function hasPath(v, path) {
@@ -2828,9 +3121,10 @@
         const set = new Set();
         for (const ex of [...new Set(exprs)]) {
           try {
+            const expr = `[path(${ex})]`;
             const r = j.promised
-              ? await j.promised.json(result, `[path(${ex})]`)
-              : j.json(result, `[path(${ex})]`);
+              ? await j.promised.json(result, expr)
+              : j.json(result, expr);
             r.filter((pth) => hasPath(result, pth)).forEach((pth) =>
               set.add(JSON.stringify(pth)),
             );
@@ -2842,6 +3136,67 @@
         let j = window.jq;
         if (j && typeof j.then === 'function') j = await j;
         return j;
+      }
+      async function jqJson(j, value, filter) {
+        return j.promised ? await j.promised.json(value, filter) : j.json(value, filter);
+      }
+      async function dynamicDiagnostics(j) {
+        const hasDynamic = (items) => items.some((o) =>
+          o.meta?.safeDynamic ||
+          (o.children && hasDynamic(o.children)) ||
+          (o.elseKids && hasDynamic(o.elseKids)),
+        );
+        if (!hasDynamic(ops)) return [];
+        let current = input;
+        const report = [];
+        for (const o of ops) {
+          if (o.meta?.safeDynamic) {
+            const query = `[path(${optionalPath(o.path)}) as $p | {path: $p, value: getpath($p), result: (getpath($p) | ${o.val})}]`;
+            const entries = await jqJson(j, current, query);
+            const skipped = [];
+            let changed = 0;
+            for (const entry of entries) {
+              const reason = !hasPath(current, entry.path)
+                ? '字段不存在'
+                : entry.value === null
+                  ? '值为 null'
+                  : !jsonEqual(entry.value, entry.result)
+                    ? ''
+                    : typeof entry.value !==
+                        (['num', 'ts'].includes(o.meta.dynamicKind) ? 'number' : 'string')
+                      ? '类型不匹配'
+                      : o.meta.dynamicKind === 'dstr' && !parseDateStr(entry.value)
+                        ? '日期无效或格式不支持'
+                        : '格式、单位、精度或范围不支持，或计算结果未变化';
+              if (reason) skipped.push({ path: entry.path, reason });
+              else changed++;
+            }
+            report.push({ path: o.path, changed, skipped });
+          } else if ((o.children && hasDynamic(o.children)) ||
+                     (o.elseKids && hasDynamic(o.elseKids))) {
+            report.push({ path: o.path, unavailable: true });
+          }
+          current = await jqJson(j, current, compileItem(o, false, ''));
+        }
+        return report;
+      }
+      function renderDynamicReport(report) {
+        const rows = [];
+        for (const item of report) {
+          if (item.unavailable) {
+            rows.push(el('div', { class: 'hint' },
+              `动态计算 ${item.path} 位于嵌套操作中，无法统计跳过项；请检查结果。`));
+            continue;
+          }
+          rows.push(el('div', { class: 'hint' },
+            `动态计算 ${item.path}：${item.changed} 项已改变，${item.skipped.length} 项未改变或跳过（无法遍历的数组分支不计入）。`));
+          item.skipped.slice(0, 200).forEach(({ path, reason }) =>
+            rows.push(el('div', {}, `${pathToJq(path)}：${reason}`)),
+          );
+          if (item.skipped.length > 200)
+            rows.push(el('div', { class: 'hint' }, '仅显示前 200 项。'));
+        }
+        $('dynamicReport').replaceChildren(...rows);
       }
       function refreshTree() {
         const ps = [];
@@ -2857,6 +3212,7 @@
         previewResult = null;
         previewReady = false;
         $('cpResult').disabled = true;
+        $('dynamicReport').replaceChildren();
         let noJq = false;
         try {
           const j = await getJq();
@@ -2873,6 +3229,15 @@
           if (my !== pvToken) return;
           renderPreview(input, r, await getTouched(j, r));
           if (my !== pvToken) return;
+          try {
+            const report = await dynamicDiagnostics(j);
+            if (my !== pvToken) return;
+            renderDynamicReport(report);
+          } catch (e) {
+            if (my !== pvToken) return;
+            $('dynamicReport').textContent =
+              '动态计算统计失败，请检查结果：' + String((e && e.message) || e);
+          }
           previewResult = r;
           previewReady = true;
           $('cpResult').disabled = false;
@@ -2935,6 +3300,17 @@
         treeOpenDefault = false;
         renderTree();
       };
+      $('treeSearch').addEventListener('input', () => {
+        treeSearchIndex = 0;
+        renderTree(true);
+      });
+      $('treeSearch').addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        navigateTreeSearch(event.shiftKey ? -1 : 1);
+      });
+      $('treeSearchPrev').onclick = () => navigateTreeSearch(-1);
+      $('treeSearchNext').onclick = () => navigateTreeSearch(1);
       function loadInput() {
         try {
           input = JSON.parse($('input').value);
@@ -2957,6 +3333,11 @@
         } catch (e) {}
       };
       $('dyn').onchange = renderAll;
+      $('arrayAll').onchange = () => {
+        document.querySelectorAll('.edit-target-path').forEach((label) => {
+          label.textContent = targetJqPath(JSON.parse(label.dataset.editPath));
+        });
+      };
       $('quote').onchange = refreshOutput;
       $('merge').onchange = refreshOutput;
       $('addSet').onclick = () => pushOp({ opr: '=', path: '.', val: 'null' });
