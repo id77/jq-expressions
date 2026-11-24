@@ -120,6 +120,15 @@
           Consolas,
           monospace;
       }
+      /* iOS Safari/WKWebView 会在聚焦小于 16px 的表单控件时自动放大页面。 */
+      @supports (-webkit-touch-callout: none) {
+        input:not([type='checkbox']):not([type='radio']),
+        textarea,
+        select,
+        [contenteditable]:not([contenteditable='false']) {
+          font-size: 16px;
+        }
+      }
       textarea {
         width: 100%;
         resize: vertical;
